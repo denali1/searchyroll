@@ -1,0 +1,34 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp
+
+# Local only — never pushed
+ROADMAP.md
+AGENTS.md
+
+# Build artifacts
+*.zip
+*.xpi
+*.crx
+web-ext-artifacts/
+dist/
+
+# Environment
+.env
+.env.local
+
+# Node (extension is vanilla JS — no runtime deps)
+package.json
+package-lock.json
+node_modules/
+
+# AI toolchain (local sessions)
+skills-lock.json
+.agents/
+.claude/
+.opencode/
