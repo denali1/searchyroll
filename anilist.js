@@ -96,6 +96,12 @@
     averageScore
     popularity
     isAdult
+    relations {
+      edges {
+        node { id }
+        relationType
+      }
+    }
   }`;
 
   /* ---- matching / confidence ---- */
@@ -189,7 +195,48 @@
       .map((t) => t.name);
   };
 
-  const buildEnriched = (record, media) => ({
+  /* Max prequel hops to follow when resolving a seriesGroupId root.
+     Guarded so franchise/relation traversal cannot run away. */
+  const MAX_GROUP_HOPS = 3;
+
+  const relationIdOf = (media, relationType) => {
+    const edges = (media && media.relations && media.relations.edges) || [];
+    for (const edge of edges) {
+      if (edge && edge.relationType === relationType && edge.node && edge.node.id) {
+        return edge.node.id;
+      }
+    }
+    return null;
+  };
+
+  /* Derive a seriesGroupId by walking PREQUEL edges (prequel-first) up to
+     MAX_GROUP_HOPS, stepping only into media that are also present in the
+     current query batch (mediaById). If no prequel chain resolves, each media
+     is its own group root (its anilistId). Uses only data already returned by
+     the single enrichment query — no additional AniList calls. */
+  const seriesGroupIdFor = (mediaId, mediaById) => {
+    let current = mediaById[mediaId];
+    if (!current) {
+      return mediaId;
+    }
+    let root = mediaId;
+    for (let hop = 0; hop < MAX_GROUP_HOPS; hop++) {
+      const prequelId = relationIdOf(current, "PREQUEL");
+      if (prequelId === null) {
+        break;
+      }
+      const prequel = mediaById[prequelId];
+      if (!prequel) {
+        root = prequelId;
+        break;
+      }
+      root = prequelId;
+      current = prequel;
+    }
+    return root;
+  };
+
+  const buildEnriched = (record, media, seriesGroupId) => ({
     ...record,
     anilistId: media.id,
     malId: media.idMal || null,
@@ -205,6 +252,7 @@
     averageScore: Number.isFinite(media.averageScore) ? media.averageScore : null,
     isAdult: !!media.isAdult,
     anilistUrl: streamingUrlFor(media),
+    seriesGroupId,
     enriched: true,
     enrichedAt: new Date().toISOString()
   });
@@ -231,6 +279,13 @@
       } catch (_e) {
         data = null;
       }
+      const mediaById = {};
+      for (const item of wave) {
+        const media = data && data[item.alias];
+        if (media && media.id) {
+          mediaById[media.id] = media;
+        }
+      }
       for (const item of wave) {
         const media = data && data[item.alias];
         if (!media || !media.id) {
@@ -245,7 +300,8 @@
           item.resolve({ ...item.record, enriched: false, enrichedAt: new Date().toISOString() });
           continue;
         }
-        item.resolve(buildEnriched(item.record, media));
+        const seriesGroupId = seriesGroupIdFor(media.id, mediaById);
+        item.resolve(buildEnriched(item.record, media, seriesGroupId));
       }
     }
     draining = false;

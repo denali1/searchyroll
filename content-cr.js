@@ -8,8 +8,12 @@
 
 "use strict";
 
+const DEBUG = false;
 const HIT_ATTR = "data-searchyroll-cr";
 const label = "[Searchyroll CR]";
+const seen = new Set();
+const platformKeyOf = (record) =>
+  (record && record.platform ? String(record.platform) : "") + ":" + (record && record.id !== undefined && record.id !== null ? String(record.id) : "");
 const seriesUrl = (id, slug) => `https://www.crunchyroll.com/series/${encodeURIComponent(id)}/${encodeURIComponent(slug)}`;
 const readHitAttr = (el) => {
   let raw;
@@ -53,13 +57,20 @@ const normalizeCr = (item) => {
     source: "cr-api"
   };
 };
+const persistTitle = (record) => {
+  try {
+    browser.runtime.sendMessage({ action: "upsertTitle", record }).catch(() => {});
+  } catch (_e) {}
+};
 const consumeHit = (el) => {
   const hit = readHitAttr(el);
   if (hit === null) {
     return;
   }
   if (hit.mark) {
-    console.warn(label, "intercepted a /content/v2/cms/objects hit without a parseable data[] body", { href: location.href });
+    if (DEBUG) {
+      console.warn(label, "intercepted a /content/v2/cms/objects hit without a parseable data[] body", { href: location.href });
+    }
     el.removeAttribute(HIT_ATTR);
     return;
   }
@@ -67,11 +78,22 @@ const consumeHit = (el) => {
   for (const item of items) {
     try {
       const record = normalizeCr(item);
-      console.log(label, record);
+      if (seen.has(platformKeyOf(record))) {
+        continue;
+      }
+      seen.add(platformKeyOf(record));
+      if (DEBUG) {
+        console.log(label, record);
+      }
       if (typeof enrichRecord === "function") {
         enrichRecord(record).then((enriched) => {
-          console.log("[Searchyroll CR enriched]", enriched);
+          persistTitle(enriched);
+          if (DEBUG) {
+            console.log("[Searchyroll CR enriched]", enriched);
+          }
         }).catch(() => {});
+      } else {
+        persistTitle(record);
       }
     } catch (_e) {}
   }

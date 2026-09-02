@@ -9,8 +9,12 @@
 
 "use strict";
 
+const DEBUG = false;
 const HIT_ATTR = "data-searchyroll-hidive";
 const label = "[Searchyroll Hidive]";
+const seen = new Set();
+const platformKeyOf = (record) =>
+  (record && record.platform ? String(record.platform) : "") + ":" + (record && record.id !== undefined && record.id !== null ? String(record.id) : "");
 
 const readHit = (el) => {
   let raw;
@@ -38,14 +42,43 @@ const oneTag = (item, key) => {
 };
 const mask = (kind, raw) => {
   if (raw === "--searchyroll-hidive-non200--") {
-    console.warn(label, "Hidive API call returned a non-200 response; nothing to parse", { kind, href: location.href });
+    if (DEBUG) {
+      console.warn(label, "Hidive API call returned a non-200 response; nothing to parse", { kind, href: location.href });
+    }
     return true;
   }
   if (raw === "--searchyroll-hidive-related--" || raw === "--searchyroll-hidive-init--") {
-    console.info(label, "hit captured but body was not the expected shape", { kind, href: location.href });
+    if (DEBUG) {
+      console.info(label, "hit captured but body was not the expected shape", { kind, href: location.href });
+    }
     return true;
   }
   return false;
+};
+const persistTitle = (record) => {
+  try {
+    browser.runtime.sendMessage({ action: "upsertTitle", record }).catch(() => {});
+  } catch (_e) {}
+};
+const handleRecord = (record) => {
+  const key = platformKeyOf(record);
+  if (seen.has(key)) {
+    return;
+  }
+  seen.add(key);
+  if (DEBUG) {
+    console.log(label, record);
+  }
+  if (typeof enrichRecord === "function") {
+    enrichRecord(record).then((enriched) => {
+      persistTitle(enriched);
+      if (DEBUG) {
+        console.log("[Searchyroll Hidive enriched]", enriched);
+      }
+    }).catch(() => {});
+  } else {
+    persistTitle(record);
+  }
 };
 const normalizeRelated = (item) => ({
   platform: "hidive",
@@ -99,13 +132,7 @@ const consume = (el) => {
     const items = parsed.found.filter((item) => item && item.type === "SERIES");
     for (const item of items) {
       try {
-        const record = normalizeRelated(item);
-        console.log(label, record);
-        if (typeof enrichRecord === "function") {
-          enrichRecord(record).then((enriched) => {
-            console.log("[Searchyroll Hidive enriched]", enriched);
-          }).catch(() => {});
-        }
+        handleRecord(normalizeRelated(item));
       } catch (_e) {}
     }
   } else if (parsed.kind === "init") {
@@ -117,13 +144,7 @@ const consume = (el) => {
       const items = list.filter((item) => item && item.type === "PLAYLIST");
       for (const item of items) {
         try {
-          const record = normalizeInitItem(item);
-          console.log(label, record);
-          if (typeof enrichRecord === "function") {
-            enrichRecord(record).then((enriched) => {
-              console.log("[Searchyroll Hidive enriched]", enriched);
-            }).catch(() => {});
-          }
+          handleRecord(normalizeInitItem(item));
         } catch (_e) {}
       }
     }
