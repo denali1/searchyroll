@@ -25,49 +25,70 @@ console.log("[Searchyroll CR-MAIN] script loaded");
   const markText = "--searchyroll-cr-interception--";
   const target = () => document.body || document.documentElement;
 
+  const relayHit = (textOrJson) => {
+    let data;
+    try {
+      data = JSON.parse(typeof textOrJson === "string" ? textOrJson : JSON.stringify(textOrJson));
+    } catch (_e) {
+      target().setAttribute("data-searchyroll-cr", markText);
+      return;
+    }
+    const found = Array.isArray(data && data.data) ? data.data : [];
+    if (found.length > 0) {
+      target().setAttribute("data-searchyroll-cr", JSON.stringify(found));
+    }
+  };
+
+  /* ---- fetch patch ---- */
   let nativeFetch;
   try {
     nativeFetch = window.fetch.bind(window);
   } catch (_err) {
-    return;
+    nativeFetch = null;
   }
-  if (typeof nativeFetch !== "function") {
-    return;
-  }
-
-  const interceptingFetch = async (...args) => {
-    console.log("[Searchyroll CR-MAIN] fetch called:", String(args[0] || ""));
-    let response;
-    try {
-      response = await nativeFetch(...args);
-    } catch (_err) {
-      throw _err;
-    }
-
-    try {
-      if (response && typeof response.clone === "function" && isHit(String(args[0]) || "")) {
-        const clone = response.clone();
-        const text = await clone.text();
-        const data = JSON.parse(text);
-
-        const found = Array.isArray(data && data.data) ? data.data : [];
-        if (found.length > 0) {
-          target().setAttribute("data-searchyroll-cr", JSON.stringify(found));
-        }
-      }
-    } catch (_ignored) {
-      /* JSON not our expected shape; mark for tuning and move on. */
+  if (typeof nativeFetch === "function") {
+    const interceptingFetch = async (...args) => {
+      console.log("[Searchyroll CR-MAIN] fetch called:", String(args[0] || ""));
+      let response;
       try {
-        target().setAttribute("data-searchyroll-cr", markText);
-      } catch (_ignored2) {}
-    }
+        response = await nativeFetch(...args);
+      } catch (_err) {
+        throw _err;
+      }
+      try {
+        if (response && typeof response.clone === "function" && isHit(String(args[0]) || "")) {
+          const text = await response.clone().text();
+          relayHit(text);
+        }
+      } catch (_ignored) {
+        /* never throw, never break the page */
+      }
+      return response;
+    };
+    try {
+      window.fetch = interceptingFetch;
+    } catch (_err) {}
+  }
 
-    return response;
-  };
-
-  try {
-    window.fetch = interceptingFetch;
-  } catch (_err) {
-    return;
+  /* ---- XHR patch (fallback for page calls that use XMLHttpRequest) ---- */
+  if (window.XMLHttpRequest) {
+    const origOpen = XMLHttpRequest.prototype.open;
+    const origSend = XMLHttpRequest.prototype.send;
+    XMLHttpRequest.prototype.open = function (method, url) {
+      this.__searchyrollUrl = String(url || "");
+      return origOpen.apply(this, arguments);
+    };
+    XMLHttpRequest.prototype.send = function (...sendArgs) {
+      this.addEventListener("load", () => {
+        try {
+          if (this.status >= 200 && this.status < 300 && isHit(String(this.__searchyrollUrl || ""))) {
+            relayHit(this.responseText);
+          }
+        } catch (_ignored) {
+          /* never throw, never break the page */
+        }
+      });
+      return origSend.apply(this, sendArgs);
+    };
   }
 })();
