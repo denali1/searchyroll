@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Searchyroll",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Unified search across Crunchyroll and Hidive — cross-platform genre, dub, and availability filtering in one anime search overlay.",
 
   "icons": {
@@ -17,7 +17,8 @@
 
   "host_permissions": [
     "*://*.crunchyroll.com/*",
-    "*://*.hidive.com/*"
+    "*://*.hidive.com/*",
+    "*://*.imggaming.com/*"
   ],
 
   "background": {
@@ -32,13 +33,25 @@
   "content_scripts": [
     {
       "matches": ["*://*.crunchyroll.com/*"],
+      "js": ["content-cr-main.js"],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": ["*://*.crunchyroll.com/*"],
       "js": ["content-cr.js"],
-      "run_at": "document_idle"
+      "run_at": "document_start"
+    },
+    {
+      "matches": ["*://*.hidive.com/*"],
+      "js": ["content-hidive-main.js"],
+      "run_at": "document_start",
+      "world": "MAIN"
     },
     {
       "matches": ["*://*.hidive.com/*"],
       "js": ["content-hidive.js"],
-      "run_at": "document_idle"
+      "run_at": "document_start"
     }
   ],
 
