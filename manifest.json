@@ -24,7 +24,7 @@
 
   "background": {
     "service_worker": "background.js",
-    "scripts": ["db.js", "background.js"]
+    "scripts": ["background.js"]
   },
 
   "action": {
