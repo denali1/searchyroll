@@ -22,7 +22,7 @@
   }
 
   const DB_NAME = "searchyroll";
-  const DB_VERSION = 1;
+  const DB_VERSION = 2;
   const STORE = "titles";
   const KEY_PATH = "platformKey";
 
@@ -42,6 +42,9 @@
       }
       request.onupgradeneeded = (event) => {
         const db = event.target.result;
+        // v1: DB opened but store creation was gated by a stale objectStoreNames
+        // check in some runs, leaving an empty DB with no 'titles' store.
+        // v2 bump forces onupgradeneeded to fire again and create it.
         if (!db.objectStoreNames.contains(STORE)) {
           const store = db.createObjectStore(STORE, { keyPath: KEY_PATH });
           store.createIndex("platform", "platform", { unique: false });
