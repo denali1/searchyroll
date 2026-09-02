@@ -16,8 +16,6 @@
 
 "use strict";
 
-console.log("[Searchyroll CR-MAIN] script loaded");
-
 (async () => {
   const isHit = (urlString) =>
     /^https?:\/\/[^/]*\/content\/v2\/cms\/objects\/[^?]*(?:\?|$)/i.test(urlString);
@@ -48,7 +46,6 @@ console.log("[Searchyroll CR-MAIN] script loaded");
   }
   if (typeof nativeFetch === "function") {
     const interceptingFetch = async (...args) => {
-      console.log("[Searchyroll CR-MAIN] fetch called:", String(args[0] || ""));
       let response;
       try {
         response = await nativeFetch(...args);
