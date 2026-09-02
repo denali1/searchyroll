@@ -60,13 +60,17 @@
       return null;
     }
     if (!response.ok) {
-      console.warn(LOG, "AniList responded with status", response.status);
+      let detail = "";
+      try {
+        detail = await response.text();
+      } catch (_e) {}
+      console.warn(LOG, "AniList responded with status", response.status, "body:", detail ? detail.slice(0, 500) : "(no body)");
       return null;
     }
     try {
       const json = await response.json();
       if (json && json.errors) {
-        console.warn(LOG, "GraphQL returned errors:", JSON.stringify(json.errors));
+        console.warn(LOG, "GraphQL returned errors:", JSON.stringify(json.errors).slice(0, 800));
         return null;
       }
       return (json && json.data) || null;
@@ -75,7 +79,7 @@
     }
   };
 
-  const MEDIA_FIELDS = `
+  const MEDIA_FIELDS = `{
     id
     idMal
     title { romaji english native }
@@ -92,7 +96,7 @@
     averageScore
     popularity
     isAdult
-  `;
+  }`;
 
   /* ---- matching / confidence ---- */
 
