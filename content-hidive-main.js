@@ -41,7 +41,7 @@
     nativeFetch = null;
   }
 
-  const classify = async (response) => {
+  const classify = async (response, kind) => {
     let json;
     if (response && typeof response.clone === "function") {
       let text;
@@ -58,26 +58,54 @@
     } else {
       json = response;
     }
-    if (Array.isArray(json && json.contentItems)) {
-      return json.contentItems;
-    }
-    if (json && typeof json === "object" && Array.isArray(json.content && json.content.buckets)) {
-      return json.content.buckets;
-    }
-    return null;
+
+    const wantedKey = kind === "init" ? "buckets" : "contentItems";
+
+    const collect = (node, depth) => {
+      if (depth > 12 || node == null || typeof node !== "object") {
+        return null;
+      }
+      if (Array.isArray(node)) {
+        if (wantedKey === "buckets" && node.length > 0 && typeof node[0] === "object" && Array.isArray(node[0].contentList)) {
+          return node;
+        }
+        for (const child of node) {
+          const hit = collect(child, depth + 1);
+          if (hit) {
+            return hit;
+          }
+        }
+        return (wantedKey === "contentItems") ? node : null;
+      }
+      if (Array.isArray(node[wantedKey])) {
+        return node[wantedKey];
+      }
+      for (const key of Object.keys(node)) {
+        if (key === wantedKey) {
+          continue;
+        }
+        const hit = collect(node[key], depth + 1);
+        if (hit) {
+          return hit;
+        }
+      }
+      return null;
+    };
+
+    return collect(json, 0);
   };
 
   const handleSecondParty = async (urlString, response) => {
     try {
       if (isRelated(urlString)) {
-        const items = await classify(response);
+        const items = await classify(response, "related");
         if (Array.isArray(items)) {
           pubmark(JSON.stringify({ kind: "related", found: items }));
         } else {
           pubmark(marking.related);
         }
       } else if (isInit(urlString)) {
-        const buckets = await classify(response);
+        const buckets = await classify(response, "init");
         if (Array.isArray(buckets)) {
           pubmark(JSON.stringify({ kind: "init", found: buckets }));
         } else {
