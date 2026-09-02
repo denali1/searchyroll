@@ -66,7 +66,13 @@ const consumeHit = (el) => {
   const items = hit.data;
   for (const item of items) {
     try {
-      console.log(label, normalizeCr(item));
+      const record = normalizeCr(item);
+      console.log(label, record);
+      if (typeof enrichRecord === "function") {
+        enrichRecord(record).then((enriched) => {
+          console.log("[Searchyroll CR enriched]", enriched);
+        }).catch(() => {});
+      }
     } catch (_e) {}
   }
   el.removeAttribute(HIT_ATTR);

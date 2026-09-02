@@ -99,7 +99,13 @@ const consume = (el) => {
     const items = parsed.found.filter((item) => item && item.type === "SERIES");
     for (const item of items) {
       try {
-        console.log(label, normalizeRelated(item));
+        const record = normalizeRelated(item);
+        console.log(label, record);
+        if (typeof enrichRecord === "function") {
+          enrichRecord(record).then((enriched) => {
+            console.log("[Searchyroll Hidive enriched]", enriched);
+          }).catch(() => {});
+        }
       } catch (_e) {}
     }
   } else if (parsed.kind === "init") {
@@ -111,7 +117,13 @@ const consume = (el) => {
       const items = list.filter((item) => item && item.type === "PLAYLIST");
       for (const item of items) {
         try {
-          console.log(label, normalizeInitItem(item));
+          const record = normalizeInitItem(item);
+          console.log(label, record);
+          if (typeof enrichRecord === "function") {
+            enrichRecord(record).then((enriched) => {
+              console.log("[Searchyroll Hidive enriched]", enriched);
+            }).catch(() => {});
+          }
         } catch (_e) {}
       }
     }
