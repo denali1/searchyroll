@@ -120,18 +120,47 @@
     return null;
   };
 
+  /* rejects Hidive-init style stubs like "Season 1" / "Episode 2" / "Part 3"
+     that carry no real series name and would otherwise fuzzy-match junk */
+  const isPlaceholderTitle = (raw) =>
+    /^(season|episode|part|vol|volume|chapter|ovas?|specials?)\s*([0-9]+)?$/i.test(String(raw || "").trim());
+
+  const titleTokens = (raw) =>
+    normalizeTitle(raw)
+      .split(/\s+/)
+      .filter((tok) => tok.length >= 2 && /[a-z]/.test(tok));
+
   const titleSimilarity = (searched, media) => {
+    if (isPlaceholderTitle(searched)) {
+      return false;
+    }
     const wanted = normalizeTitle(searched);
     if (!wanted) {
+      return false;
+    }
+    const searchTokens = titleTokens(searched);
+    if (searchTokens.length === 0) {
       return false;
     }
     const candidates = [(media.title || {}).romaji, (media.title || {}).english, (media.title || {}).native]
       .map(normalizeTitle)
       .filter(Boolean);
     for (const candidate of candidates) {
-      if (candidate && (candidate === wanted || candidate.indexOf(wanted) !== -1 || wanted.indexOf(candidate) !== -1)) {
-        return true;
+      const candTokens = titleTokens(candidate);
+      if (candTokens.length === 0) {
+        continue;
       }
+      // token-membership ratio: how many of the search tokens appear in the candidate
+      const matched = searchTokens.filter((tok) => candTokens.indexOf(tok) !== -1).length;
+      const ratio = matched / searchTokens.length;
+      if (ratio < 0.6) {
+        continue;
+      }
+      // guard against substring-absorb into a much longer, otherwise-unrelated title
+      if (candidate.indexOf(wanted) !== -1 && candTokens.length >= searchTokens.length * 2) {
+        continue;
+      }
+      return true;
     }
     return false;
   };
