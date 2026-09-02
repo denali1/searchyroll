@@ -73,7 +73,8 @@ const consumeHit = (el) => {
 };
 const scan = () => {
   const el = document.body || document.documentElement;
-  if (el) {
+  if (el && el.hasAttribute(HIT_ATTR)) {
+    console.log("[Searchyroll CR] event received (scan)");
     consumeHit(el);
   }
 };
