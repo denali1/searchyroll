@@ -494,29 +494,6 @@
     }
   };
 
-  const onFilterChange = (event) => {
-    const target = event.target;
-    if (!target || !target.closest) {
-      return;
-    }
-    const isRadio = target.tagName === "INPUT" && target.type === "radio";
-    const isGenre = target.id === "syr-genre";
-    if (isRadio && target.name !== "syr-platform" &&
-        target.name !== "syr-status" && target.name !== "syr-dubsub") {
-      return;
-    }
-    if (!isRadio && !isGenre) {
-      return;
-    }
-    if (DEBUG) {
-      console.log("[Searchyroll] filter change", target.name || target.id, target.value || "n/a");
-    }
-    if (DEBUG) {
-      console.log("[Searchyroll] filters now:", JSON.stringify(currentFilters()));
-    }
-    runFilterQuery();
-  };
-
   const runFilterQuery = () => {
     if (state.searchTimer) {
       clearTimeout(state.searchTimer);
@@ -525,14 +502,46 @@
     runQuery();
   };
 
+  const onRadioChange = (event) => {
+    const target = event.target;
+    if (!target || !target.name) {
+      return;
+    }
+    if (target.name !== "syr-platform" &&
+        target.name !== "syr-status" &&
+        target.name !== "syr-dubsub") {
+      return;
+    }
+    if (DEBUG) {
+      console.log("[Searchyroll] radio change", target.name, target.value);
+    }
+    if (DEBUG) {
+      console.log("[Searchyroll] filters now:", JSON.stringify(currentFilters()));
+    }
+    runFilterQuery();
+  };
+
+  const onRadioClickFallback = () => {
+    if (DEBUG) {
+      console.log("[Searchyroll] radio click fallback -> re-query");
+    }
+    setTimeout(runQuery, 0);
+  };
+
+  const onGenreChange = () => {
+    if (DEBUG) {
+      console.log("[Searchyroll] genre change", JSON.stringify(currentFilters()));
+    }
+    runFilterQuery();
+  };
+
   const wireOverlayEvents = () => {
     if (!state.root) {
       return;
     }
     const backdrop = state.root.getElementById("syr-backdrop");
-    if (backdrop && !backdrop.dataset.filterWired) {
-      backdrop.dataset.filterWired = "1";
-      backdrop.addEventListener("change", onFilterChange);
+    if (backdrop && !backdrop.dataset.wired) {
+      backdrop.dataset.wired = "1";
       backdrop.addEventListener("keydown", (event) => {
         if (event.key === "Escape") {
           event.stopPropagation();
@@ -559,6 +568,15 @@
         }
         state.searchTimer = setTimeout(runQuery, 300);
       });
+    }
+    const radios = state.root.querySelectorAll("input[type=radio]");
+    for (const radio of radios) {
+      radio.addEventListener("change", onRadioChange);
+      radio.addEventListener("click", onRadioClickFallback);
+    }
+    const genre = state.root.getElementById("syr-genre");
+    if (genre) {
+      genre.addEventListener("change", onGenreChange);
     }
   };
 
