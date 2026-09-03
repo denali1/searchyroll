@@ -6,6 +6,8 @@ A Firefox and Chrome extension that adds a unified, advanced search layer across
 ![License: MIT](https://img.shields.io/badge/license-MIT-green)
 ![Firefox + Chrome](https://img.shields.io/badge/browser-Firefox%20%26%20Chrome-blue)
 
+> **⚠️ IMPORTANT:** Searchyroll is an independent, open-source project. It is not affiliated with, endorsed by, or approved by Crunchyroll, Sony, Hidive, or AMC Global Media. Use of this extension may technically conflict with the Terms of Service of Crunchyroll and/or Hidive. While no users have been known to face account action for using browser extensions on these platforms, we cannot guarantee this will never occur. BY INSTALLING THIS EXTENSION, YOU ACCEPT FULL RESPONSIBILITY FOR ANY CONSEQUENCES TO YOUR ACCOUNTS. USE AT YOUR OWN RISK.
+
 ---
 
 ## The problem

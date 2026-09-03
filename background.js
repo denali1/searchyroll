@@ -297,10 +297,34 @@ browser.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       .catch(() => sendResponse({ ok: false, error: "getAll failed" }));
     return true;
   }
+  if (action === "openWelcome") {
+    try {
+      browser.tabs.create({ url: browser.runtime.getURL("welcome.html") });
+    } catch (_e) {}
+    sendResponse({ ok: true });
+    return true;
+  }
   sendResponse({ ok: false, error: "unknown action" });
   return false;
 });
 
-browser.runtime.onInstalled.addListener(() => {
+browser.commands.onCommand.addListener((command) => {
+  if (command !== "toggle-search") {
+    return;
+  }
+  browser.tabs.query({ active: true, currentWindow: true }).then((tabs) => {
+    const tab = tabs && tabs[0];
+    if (tab && tab.id !== undefined && tab.id !== null) {
+      browser.tabs.sendMessage(tab.id, { action: "toggleSearch" }).catch(() => {});
+    }
+  }).catch(() => {});
+});
+
+browser.runtime.onInstalled.addListener((details) => {
   console.log("[Searchyroll] Installed");
+  if (details && details.reason === "install") {
+    try {
+      browser.tabs.create({ url: browser.runtime.getURL("welcome.html") });
+    } catch (_e) {}
+  }
 });

@@ -166,3 +166,17 @@ new MutationObserver((muts) => {
     }
   }
 }).observe(document.documentElement, { attributes: true, attributeFilter: [HIT_ATTR], subtree: true });
+
+if (typeof globalThis.SearchyrollOverlay === "object" && globalThis.SearchyrollOverlay) {
+  try {
+    globalThis.SearchyrollOverlay.init("hidive");
+  } catch (_e) {}
+  try {
+    browser.runtime.onMessage.addListener((message) => {
+      if (message && message.action === "toggleSearch") {
+        globalThis.SearchyrollOverlay.handleToggle();
+        return false;
+      }
+    });
+  } catch (_e) {}
+}

@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Welcome to Searchyroll</title>
+  <link rel="stylesheet" href="welcome.css">
+</head>
+<body>
+  <main class="syr-welcome">
+    <section id="syr-ack-gate" class="syr-ack-gate">
+      <p class="syr-disclaimer">
+        ⚠️ IMPORTANT: Searchyroll is an independent, open-source project. It is not affiliated with, endorsed by, or approved by Crunchyroll, Sony, Hidive, or AMC Global Media. Use of this extension may technically conflict with the Terms of Service of Crunchyroll and/or Hidive. While no users have been known to face account action for using browser extensions on these platforms, we cannot guarantee this will never occur. BY INSTALLING THIS EXTENSION, YOU ACCEPT FULL RESPONSIBILITY FOR ANY CONSEQUENCES TO YOUR ACCOUNTS. USE AT YOUR OWN RISK.
+      </p>
+      <button id="syr-ack-button" type="button" class="syr-ack-button">I understand</button>
+    </section>
+
+    <section id="syr-welcome-content" class="syr-content" hidden>
+      <h1>Welcome to Searchyroll</h1>
+      <p>Searchyroll adds a unified, advanced search layer across Crunchyroll and Hidive so you can find anime by genre, dub/sub availability, completion status, and studio — across both platforms at once.</p>
+
+      <h2>How to use it</h2>
+      <p>Press <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Y</kbd> (or <kbd>Cmd</kbd>+<kbd>Shift</kbd>+<kbd>Y</kbd> on Mac) on any Crunchyroll or Hidive page to open the search overlay. You can also click the floating Searchyroll button in the bottom-right corner of the page.</p>
+
+      <h2>About your catalog</h2>
+      <p>Your search catalog builds automatically as you browse Crunchyroll and Hidive. The more you browse, the more titles become searchable. Searches run entirely against your local catalog — no network calls at search time.</p>
+
+      <p class="syr-muted">Searchyroll is open source. Your browsing data stays local to your browser.</p>
+    </section>
+  </main>
+
+  <script src="welcome.js"></script>
+</body>
+</html>

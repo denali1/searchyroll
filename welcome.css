@@ -1,0 +1,89 @@
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  background: #1a1a2e;
+  color: #ffffff;
+  line-height: 1.5;
+}
+
+.syr-welcome {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 40px 24px 64px;
+}
+
+/* ---- Acknowledgement gate ---- */
+
+.syr-ack-gate {
+  margin-bottom: 32px;
+  padding: 20px;
+  border: 1px solid #e85d04;
+  border-radius: 8px;
+  background: #241f2e;
+}
+
+.syr-disclaimer {
+  margin: 0 0 20px;
+  font-size: 15px;
+  font-weight: bold;
+  text-decoration: underline;
+  color: #ffcf9e;
+}
+
+.syr-ack-button {
+  display: inline-block;
+  padding: 12px 24px;
+  font-size: 15px;
+  font-weight: 600;
+  color: #ffffff;
+  background: #e85d04;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.syr-ack-button:hover,
+.syr-ack-button:focus {
+  background: #f06a12;
+}
+
+/* ---- Welcome content ---- */
+
+.syr-content h1 {
+  font-size: 28px;
+  margin: 0 0 12px;
+  color: #ffffff;
+}
+
+.syr-content h2 {
+  font-size: 20px;
+  margin: 24px 0 8px;
+  color: #e85d04;
+}
+
+.syr-content p {
+  margin: 0 0 12px;
+}
+
+kbd {
+  padding: 2px 6px;
+  border: 1px solid #5a5a7a;
+  border-radius: 4px;
+  background: #2a2a44;
+  font-family: inherit;
+  font-size: 0.9em;
+}
+
+.syr-muted {
+  color: #9a9ab8;
+  font-size: 14px;
+}
