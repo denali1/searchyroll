@@ -259,7 +259,7 @@
  * Message router — content scripts + popup -> SearchyrollDB
  * ========================================================================= */
 
-const DEBUG = false;
+const DEBUG = true;
 const label = "[Searchyroll]";
 
 browser.runtime.onMessage.addListener((message, _sender, sendResponse) => {
@@ -269,14 +269,23 @@ browser.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   }
   const action = message.action;
   if (action === "upsertTitle") {
+    if (DEBUG) {
+      const rec = message.record || {};
+      console.log(label, "received upsertTitle", (rec && rec.platformKey) || (rec && (rec.platform + ":" + rec.id)), "enriched:", rec && rec.enriched);
+    }
     SearchyrollDB.upsertTitle(message.record)
       .then((result) => {
         if (DEBUG) {
-          console.log(label, "upserted", (message.record && message.record.platformKey) || "", result);
+          console.log(label, "upsert resolved:", (message.record && message.record.platformKey) || "", "stored:", result && result.platformKey);
         }
         sendResponse({ ok: true, record: result || null });
       })
-      .catch(() => sendResponse({ ok: false, error: "upsert failed" }));
+      .catch((err) => {
+        if (DEBUG) {
+          console.warn(label, "upsertTitle write failed:", String(err && err.message || err));
+        }
+        sendResponse({ ok: false, error: "upsert failed" });
+      });
     return true; // keep message channel open for async response
   }
   if (action === "getTitle") {
