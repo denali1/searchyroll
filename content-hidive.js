@@ -60,6 +60,19 @@ const persistTitle = (record) => {
     browser.runtime.sendMessage({ action: "upsertTitle", record }).catch(() => {});
   } catch (_e) {}
 };
+const enrichThenPersist = (record) => {
+  try {
+    browser.runtime.sendMessage({ action: "enrichTitle", record }).then((res) => {
+      const enriched = (res && res.ok && res.record) ? res.record : record;
+      if (DEBUG) {
+        console.log("[Searchyroll Hidive enriched]", enriched);
+      }
+      persistTitle(enriched);
+    }).catch(() => persistTitle(record));
+  } catch (_e) {
+    persistTitle(record);
+  }
+};
 const handleRecord = (record) => {
   const key = platformKeyOf(record);
   if (seen.has(key)) {
@@ -69,16 +82,7 @@ const handleRecord = (record) => {
   if (DEBUG) {
     console.log(label, record);
   }
-  if (typeof enrichRecord === "function") {
-    enrichRecord(record).then((enriched) => {
-      persistTitle(enriched);
-      if (DEBUG) {
-        console.log("[Searchyroll Hidive enriched]", enriched);
-      }
-    }).catch(() => {});
-  } else {
-    persistTitle(record);
-  }
+  enrichThenPersist(record);
 };
 const normalizeRelated = (item) => ({
   platform: "hidive",

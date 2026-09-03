@@ -62,6 +62,19 @@ const persistTitle = (record) => {
     browser.runtime.sendMessage({ action: "upsertTitle", record }).catch(() => {});
   } catch (_e) {}
 };
+const enrichThenPersist = (record) => {
+  try {
+    browser.runtime.sendMessage({ action: "enrichTitle", record }).then((res) => {
+      const enriched = (res && res.ok && res.record) ? res.record : record;
+      if (DEBUG) {
+        console.log("[Searchyroll CR enriched]", enriched);
+      }
+      persistTitle(enriched);
+    }).catch(() => persistTitle(record));
+  } catch (_e) {
+    persistTitle(record);
+  }
+};
 const consumeHit = (el) => {
   const hit = readHitAttr(el);
   if (hit === null) {
@@ -85,16 +98,7 @@ const consumeHit = (el) => {
       if (DEBUG) {
         console.log(label, record);
       }
-      if (typeof enrichRecord === "function") {
-        enrichRecord(record).then((enriched) => {
-          persistTitle(enriched);
-          if (DEBUG) {
-            console.log("[Searchyroll CR enriched]", enriched);
-          }
-        }).catch(() => {});
-      } else {
-        persistTitle(record);
-      }
+      enrichThenPersist(record);
     } catch (_e) {}
   }
   el.removeAttribute(HIT_ATTR);

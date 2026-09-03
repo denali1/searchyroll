@@ -50,7 +50,7 @@
     },
     {
       "matches": ["*://*.crunchyroll.com/*"],
-      "js": ["anilist.js", "search-overlay.js", "content-cr.js"],
+      "js": ["search-overlay.js", "content-cr.js"],
       "run_at": "document_start"
     },
     {
@@ -61,7 +61,7 @@
     },
     {
       "matches": ["*://*.hidive.com/*"],
-      "js": ["anilist.js", "search-overlay.js", "content-hidive.js"],
+      "js": ["search-overlay.js", "content-hidive.js"],
       "run_at": "document_start"
     }
   ],

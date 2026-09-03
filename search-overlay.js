@@ -30,7 +30,7 @@
   const ACK_KEY = "searchyrollDisclaimerAck";
   const STYLE_ID = "syr-overlay-style";
   const HOST_ID = "syr-overlay-host";
-  const DEBUG = true;
+  const DEBUG = false;
 
   const CSS = `
     .syr-host {
