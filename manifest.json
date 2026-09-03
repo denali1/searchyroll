@@ -34,8 +34,8 @@
   "commands": {
     "toggle-search": {
       "suggested_key": {
-        "default": "Ctrl+Shift+A",
-        "mac": "Command+Shift+A"
+        "default": "Ctrl+Shift+F",
+        "mac": "Command+Shift+F"
       },
       "description": "Open Searchyroll search overlay"
     }
