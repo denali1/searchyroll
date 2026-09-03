@@ -30,7 +30,7 @@
   const ACK_KEY = "searchyrollDisclaimerAck";
   const STYLE_ID = "syr-overlay-style";
   const HOST_ID = "syr-overlay-host";
-  const DEBUG = false;
+  const DEBUG = true;
 
   const CSS = `
     .syr-host {
@@ -54,6 +54,7 @@
       font-size: 12px;
       border: none;
       cursor: pointer;
+      pointer-events: auto;
       z-index: 2147483647;
       box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5);
       display: flex;
@@ -72,6 +73,7 @@
       inset: 0;
       background: rgba(0, 0, 0, 0.55);
       z-index: 2147483646;
+      pointer-events: auto;
       display: none;
       align-items: center;
       justify-content: center;
