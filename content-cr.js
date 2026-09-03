@@ -8,7 +8,7 @@
 
 "use strict";
 
-const DEBUG = true;
+const DEBUG = false;
 const HIT_ATTR = "data-searchyroll-cr";
 const label = "[Searchyroll CR]";
 const seen = new Set();
@@ -59,14 +59,7 @@ const normalizeCr = (item) => {
 };
 const persistTitle = (record) => {
   try {
-    if (DEBUG) {
-      console.log(label, "sending upsertTitle for", (record && record.platformKey) || (record && record.platform + ":" + record.id), "enriched:", record && record.enriched);
-    }
-    browser.runtime.sendMessage({ action: "upsertTitle", record }).then((res) => {
-      if (DEBUG) {
-        console.log(label, "upsertTitle response:", res);
-      }
-    }).catch(() => {});
+    browser.runtime.sendMessage({ action: "upsertTitle", record }).catch(() => {});
   } catch (_e) {}
 };
 const consumeHit = (el) => {
