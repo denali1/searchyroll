@@ -30,6 +30,7 @@
   const ACK_KEY = "searchyrollDisclaimerAck";
   const STYLE_ID = "syr-overlay-style";
   const HOST_ID = "syr-overlay-host";
+  const DEBUG = false;
 
   const CSS = `
     .syr-host {
@@ -493,18 +494,45 @@
     }
   };
 
+  const onFilterChange = (event) => {
+    const target = event.target;
+    if (!target || !target.closest) {
+      return;
+    }
+    const isRadio = target.tagName === "INPUT" && target.type === "radio";
+    const isGenre = target.id === "syr-genre";
+    if (isRadio && target.name !== "syr-platform" &&
+        target.name !== "syr-status" && target.name !== "syr-dubsub") {
+      return;
+    }
+    if (!isRadio && !isGenre) {
+      return;
+    }
+    if (DEBUG) {
+      console.log("[Searchyroll] filter change", target.name || target.id, target.value || "n/a");
+    }
+    if (DEBUG) {
+      console.log("[Searchyroll] filters now:", JSON.stringify(currentFilters()));
+    }
+    runFilterQuery();
+  };
+
+  const runFilterQuery = () => {
+    if (state.searchTimer) {
+      clearTimeout(state.searchTimer);
+      state.searchTimer = null;
+    }
+    runQuery();
+  };
+
   const wireOverlayEvents = () => {
     if (!state.root) {
       return;
     }
-    const close = state.root.getElementById("syr-close");
-    if (close && !close.dataset.wired) {
-      close.dataset.wired = "1";
-      close.addEventListener("click", closeOverlay);
-    }
     const backdrop = state.root.getElementById("syr-backdrop");
-    if (backdrop && !backdrop.dataset.wired) {
-      backdrop.dataset.wired = "1";
+    if (backdrop && !backdrop.dataset.filterWired) {
+      backdrop.dataset.filterWired = "1";
+      backdrop.addEventListener("change", onFilterChange);
       backdrop.addEventListener("keydown", (event) => {
         if (event.key === "Escape") {
           event.stopPropagation();
@@ -517,6 +545,11 @@
         }
       });
     }
+    const close = state.root.getElementById("syr-close");
+    if (close && !close.dataset.wired) {
+      close.dataset.wired = "1";
+      close.addEventListener("click", closeOverlay);
+    }
     const input = state.root.getElementById("syr-search-input");
     if (input && !input.dataset.wired) {
       input.dataset.wired = "1";
@@ -526,18 +559,6 @@
         }
         state.searchTimer = setTimeout(runQuery, 300);
       });
-    }
-    const radios = state.root ? state.root.querySelectorAll("input[type=radio]") : [];
-    for (const radio of radios) {
-      if (!radio.dataset.wired) {
-        radio.dataset.wired = "1";
-        radio.addEventListener("change", runQuery);
-      }
-    }
-    const genre = state.root.getElementById("syr-genre");
-    if (genre && !genre.dataset.wired) {
-      genre.dataset.wired = "1";
-      genre.addEventListener("change", runQuery);
     }
   };
 
