@@ -1,0 +1,5 @@
+{
+  "version": 2,
+  "builds": [{ "src": "api/anilist.js", "use": "@vercel/node" }],
+  "routes": [{ "src": "/graphql", "dest": "api/anilist.js" }]
+}
