@@ -86,3 +86,13 @@ All catalog indexing runs locally in your browser. No browsing history, watch hi
 ## License
 
 MIT — see [LICENSE](LICENSE) for details.
+
+---
+
+## Support a Good Cause
+
+Searchyroll is free and always will be. If you'd like to give something back, please consider donating to one of these organizations that matter to the people who built this:
+
+- **[Dolly Parton's Imagination Library](https://imaginationlibrary.com)** — puts free books in the hands of children from birth to age five, no matter where they live or their family's income.
+- **[Lou Ruvo Center for Brain Health — Cleveland Clinic](https://my.clevelandclinic.org/departments/neurological/depts/lou-ruvo-center-for-brain-health)** — research and care for patients with brain diseases including Alzheimer's, Huntington's, and Parkinson's. A cause that means something personal to us: **Tim Curry**, who lit up our childhoods, survived a massive 2012 stroke and spent the rest of his years — until his passing in August 2026 — navigating brain-disease recovery with the same wit he always had on screen.
+- **[Wounded Warrior Project](https://www.woundedwarriorproject.org)** — programs and services for post-9/11 veterans and their families. This one's for **Peter Cullen**: the voice of Optimus Prime, a hero who was modeled on the strength and gentleness of his own Marine veteran brother — a piece of our childhoods born from the veteran community.

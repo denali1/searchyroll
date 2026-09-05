@@ -1,0 +1,98 @@
+name: Build catalog
+
+# Phase 7 — scheduled + manual catalog artifact build.
+# Runs scripts/build-catalog.js against AniList, then publishes the gzipped
+# artifact as a versioned GitHub release and commits the updated
+# catalog-version.json manifest back to main. The extension's existing Phase 6
+# daily version check + download logic distributes the result.
+
+on:
+  schedule:
+    # Wednesday and Saturday 06:00 UTC — mid-week simulcast drops + weekend catch-up.
+    - cron: '0 6 * * 3,6'
+  workflow_dispatch: # on-demand builds (also re-enables the schedule if GitHub ever auto-disabled it)
+
+permissions:
+  contents: write # GITHUB_TOKEN only — release creation + manifest commit-back
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+
+      - name: Build catalog
+        # --version uses the UTC date (YYYY.MM.DD): monotonic across days, stable
+        # within one day, and matched by the manifest's own UTC date stamp.
+        # --min 1000 aborts the build (non-zero exit) if AniList is down or
+        # pagination degrades, so a partial catalog never reaches validation.
+        run: node scripts/build-catalog.js --version "$(date -u +%Y.%m.%d)" --min 1000
+
+      - name: Validate artifact
+        # Independent postcondition check per Phase 7 brief: abort loudly (workflow
+        # turns red, GitHub notifies) if the artifact is missing, empty, or the
+        # manifest count is invalid. No release, no commit-back — users stay on the
+        # previous good catalog.
+        run: |
+          node -e '
+            const fs = require("fs");
+            let m = null;
+            try {
+              m = JSON.parse(fs.readFileSync("catalog/catalog-version.json", "utf8"));
+            } catch (e) {
+              console.error("WORKFLOW ABORT: catalog-version.json missing or unparseable");
+              process.exit(1);
+            }
+            const gz = fs.existsSync("catalog/catalog.json.gz") ? fs.statSync("catalog/catalog.json.gz").size : 0;
+            if (typeof m.version !== "string" || m.version.length === 0) {
+              console.error("WORKFLOW ABORT: manifest version invalid");
+              process.exit(1);
+            }
+            if (!Number.isFinite(m.count) || m.count <= 0 || m.count < 1000) {
+              console.error("WORKFLOW ABORT: manifest count invalid (" + JSON.stringify(m.count) + ") — AniList was down or the build was partial");
+              process.exit(1);
+            }
+            if (gz === 0) {
+              console.error("WORKFLOW ABORT: catalog.json.gz missing or empty");
+              process.exit(1);
+            }
+            console.log("validation OK: version=" + m.version + ", count=" + m.count + ", gz=" + gz + " bytes");
+          '
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          VERSION="$(node -p "require('./catalog/catalog-version.json').version")"
+          COUNT="$(node -p "require('./catalog/catalog-version.json').count")"
+          TAG="catalog-v${VERSION}"
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "release $TAG already exists — skipping (same-day duplicate run)"
+          else
+            gh release create "$TAG" catalog/catalog.json.gz \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "Searchyroll catalog ${VERSION}" \
+              --notes "Versioned AniList-derived search catalog for cold-start bootstrap. Built $(date -u +%Y-%m-%dT%H:%M:%SZ) by GitHub Actions. Records: ${COUNT}."
+          fi
+
+      - name: Commit updated catalog-version.json
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add catalog/catalog-version.json
+          if git diff --cached --quiet; then
+            echo "catalog-version.json unchanged — nothing to commit"
+          else
+            git commit -m "chore(catalog): update catalog-version.json [skip ci]"
+            # [skip ci] + GITHUB_TOKEN-triggered push never re-trigger workflows.
+            git push origin main
+          fi

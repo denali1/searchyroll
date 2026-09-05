@@ -26,6 +26,9 @@
  *
  * Flags:
  *   --top <N>        how many title records to collect (default 5000)
+ *   --min <N>        minimum records required (default 1) — abort with non-zero
+ *                    exit if fewer were collected (guards scheduled builds
+ *                    against a partial catalog when AniList is down)
  *   --out <dir>      output directory (default ./catalog)
  *   --version <v>    catalog version stamp, semver (default 1.0.0)
  *   --date <ISO>     catalog date stamp (default today, yyyy-mm-dd)
@@ -52,6 +55,7 @@ const argValue = (flag) => {
 
 const OUT_DIR = path.resolve(argValue("--out") || "catalog");
 const TOP = Math.max(1, Number(argValue("--top")) || 5000);
+const MIN = Math.max(1, Number(argValue("--min")) || 1);
 const VERSION = argValue("--version") || "1.0.0";
 const DATE = argValue("--date") || new Date().toISOString().slice(0, 10);
 const FIXTURE = argValue("--fixture");
@@ -332,6 +336,10 @@ async function fetchAllMedia(url) {
 
   if (mediaAll.length === 0) {
     warn("no media collected — nothing to build");
+    process.exit(1);
+  }
+  if (mediaAll.length < MIN) {
+    warn("only " + mediaAll.length + " titles collected — below the required minimum of " + MIN + " (AniList down or pagination degraded)");
     process.exit(1);
   }
 
