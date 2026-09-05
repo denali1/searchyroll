@@ -294,6 +294,10 @@
     if (elapsed < MIN_INTERVAL_MS) {
       await sleep(MIN_INTERVAL_MS - elapsed);
     }
+    if (DEBUG) {
+      console.log(label, "TEMPORARY DEBUG QUERY:", query);
+      console.log(label, "TEMPORARY DEBUG VARIABLES:", JSON.stringify(variables));
+    }
     let response;
     try {
       response = await fetch(API_URL, {
@@ -317,13 +321,30 @@
       try {
         detail = await response.text();
       } catch (_e) {}
-      console.warn(label, "AniList responded with status", response.status, "body:", detail ? detail.slice(0, 500) : "(no body)");
+      if (DEBUG) {
+        console.warn(label, "AniList responded with status", response.status, "FULL body:", detail);
+      } else {
+        console.warn(label, "AniList responded with status", response.status, "body:", detail ? detail.slice(0, 500) : "(no body)");
+      }
       return null;
     }
     try {
       const json = await response.json();
       if (json && json.errors) {
-        console.warn(label, "GraphQL returned errors:", JSON.stringify(json.errors).slice(0, 800));
+        if (DEBUG) {
+          console.warn(label, "GraphQL errors (full):", JSON.stringify(json.errors));
+          const lines = String(query).split("\n");
+          for (const err of json.errors) {
+            const locs = (err && err.locations) || [];
+            for (const loc of locs) {
+              const line = String(lines[(loc.line || 1) - 1] || "");
+              const col = loc.column || 0;
+              console.warn(label, "error location", JSON.stringify(loc), "chunk:", JSON.stringify(line.slice(Math.max(0, col - 40), col + 40)));
+            }
+          }
+        } else {
+          console.warn(label, "GraphQL returned errors:", JSON.stringify(json.errors).slice(0, 800));
+        }
         return null;
       }
       return (json && json.data) || null;
@@ -576,7 +597,7 @@
  * Message router — content scripts + popup -> SearchyrollDB / SearchyrollEnrich
  * ========================================================================= */
 
-const DEBUG = false;
+const DEBUG = true; // TEMPORARY: query-dump diagnostic for 404 diagnosis; flip back to false after capture
 const label = "[Searchyroll]";
 
 browser.runtime.onMessage.addListener((message, _sender, sendResponse) => {
