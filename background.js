@@ -273,6 +273,7 @@
 
   const API_URL = "https://searchyroll-n9zn7imo2-shadowforge-heavy-industries.vercel.app/graphql";
   const MIN_INTERVAL_MS = 700;
+  const BISECT_INTERVAL_MS = 1200;
   const MAX_ALIASES = 10;
   const MAX_TAGS = 5;
 
@@ -536,7 +537,13 @@
         } else if (result && result.status === 404 && wave.length > 1) {
           console.warn(label, "AniList batch 404; retrying", wave.length, "titles individually");
           const bisected = {};
+          let prevDispatchAt = Date.now();
           for (const item of wave) {
+            const wait = BISECT_INTERVAL_MS - (Date.now() - prevDispatchAt);
+            if (wait > 0) {
+              await sleep(wait);
+            }
+            prevDispatchAt = Date.now();
             try {
               bisected[item.alias] = await singleLookup(item);
             } catch (_e) {
