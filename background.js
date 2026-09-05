@@ -262,8 +262,8 @@
  * page context. AniList queries previously fired from a content script on
  * crunchyroll.com / hidive.com returned HTTP 404 (page-origin/CORS context),
  * which silently stored every title as enriched:false and left the genre
- * filter empty. Fetching from the extension origin resolves that. Mirror of
- * the former anilist.js content-script module.
+ * filter empty. Fetching from the extension origin resolves that. Supersedes
+ * the former anilist.js content-script module (retired).
  * ========================================================================= */
 
 (function () {
