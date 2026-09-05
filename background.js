@@ -283,6 +283,16 @@
 
   const sanitize = (value) => String(value || "").trim();
 
+  const normalizeSearchArg = (value) =>
+    String(value || "")
+      .replace(/[\u2018\u2019\u02BC\u201A]/g, "'")
+      .replace(/[\u201C\u201D\u201E]/g, "\"")
+      .replace(/[\u2013\u2014\u2212\uFF0D]/g, "-")
+      .replace(/[\u00A0\u2009\u202F\u3000]+/g, " ")
+      .replace(/[\uFF01-\uFF5E]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xFEE0))
+      .replace(/\s+/g, " ")
+      .trim();
+
   const queue = [];
   let draining = false;
   let lastRequestAt = 0;
@@ -293,10 +303,6 @@
     const elapsed = Date.now() - lastRequestAt;
     if (elapsed < MIN_INTERVAL_MS) {
       await sleep(MIN_INTERVAL_MS - elapsed);
-    }
-    if (DEBUG) {
-      console.log(label, "TEMPORARY DEBUG QUERY:", query);
-      console.log(label, "TEMPORARY DEBUG VARIABLES:", JSON.stringify(variables));
     }
     let response;
     try {
@@ -310,46 +316,29 @@
       });
     } catch (err) {
       console.warn(label, "AniList network error:", String(err));
-      return null;
+      return { ok: false, status: 0 };
     }
     lastRequestAt = Date.now();
     if (!response) {
-      return null;
+      return { ok: false, status: 0 };
     }
     if (!response.ok) {
       let detail = "";
       try {
         detail = await response.text();
       } catch (_e) {}
-      if (DEBUG) {
-        console.warn(label, "AniList responded with status", response.status, "FULL body:", detail);
-      } else {
-        console.warn(label, "AniList responded with status", response.status, "body:", detail ? detail.slice(0, 500) : "(no body)");
-      }
-      return null;
+      console.warn(label, "AniList responded with status", response.status, "body:", detail ? detail.slice(0, 500) : "(no body)");
+      return { ok: false, status: response.status };
     }
     try {
       const json = await response.json();
       if (json && json.errors) {
-        if (DEBUG) {
-          console.warn(label, "GraphQL errors (full):", JSON.stringify(json.errors));
-          const lines = String(query).split("\n");
-          for (const err of json.errors) {
-            const locs = (err && err.locations) || [];
-            for (const loc of locs) {
-              const line = String(lines[(loc.line || 1) - 1] || "");
-              const col = loc.column || 0;
-              console.warn(label, "error location", JSON.stringify(loc), "chunk:", JSON.stringify(line.slice(Math.max(0, col - 40), col + 40)));
-            }
-          }
-        } else {
-          console.warn(label, "GraphQL returned errors:", JSON.stringify(json.errors).slice(0, 800));
-        }
-        return null;
+        console.warn(label, "GraphQL returned errors:", JSON.stringify(json.errors).slice(0, 800));
+        return { ok: false, status: response.status };
       }
-      return (json && json.data) || null;
+      return { ok: true, data: (json && json.data) || null };
     } catch (_e) {
-      return null;
+      return { ok: false, status: response.status };
     }
   };
 
@@ -518,6 +507,12 @@
     enrichedAt: new Date().toISOString()
   });
 
+  const singleLookup = async (item) => {
+    const wrapped = `query ($title0query: String) { ${item.alias}: Media(search: $title0query, type: ANIME) ${MEDIA_FIELDS}\n }`;
+    const result = await postAnilist(wrapped, { title0query: item.searchArg });
+    return result && result.ok && result.data ? result.data[item.alias] || null : null;
+  };
+
   const drain = async () => {
     draining = true;
     while (queue.length > 0) {
@@ -527,14 +522,29 @@
       const variables = {};
       wave.forEach((item, i) => {
         item.alias = "media" + i;
+        item.searchArg = normalizeSearchArg(item.record.title);
         query = query + `${item.alias}: Media(search: $title${i}query, type: ANIME) ${MEDIA_FIELDS}\n`;
-        variables["title" + i + "query"] = item.record.title;
+        variables["title" + i + "query"] = item.searchArg;
         varDecls = varDecls + (i === 0 ? "" : ", ") + `$title${i}query: String`;
       });
       const wrapped = `query (${varDecls}) { ${query} }`;
       let data = null;
       try {
-        data = await postAnilist(wrapped, variables);
+        const result = await postAnilist(wrapped, variables);
+        if (result && result.ok) {
+          data = result.data;
+        } else if (result && result.status === 404 && wave.length > 1) {
+          console.warn(label, "AniList batch 404; retrying", wave.length, "titles individually");
+          const bisected = {};
+          for (const item of wave) {
+            try {
+              bisected[item.alias] = await singleLookup(item);
+            } catch (_e) {
+              bisected[item.alias] = null;
+            }
+          }
+          data = bisected;
+        }
       } catch (_e) {
         data = null;
       }
@@ -597,7 +607,7 @@
  * Message router — content scripts + popup -> SearchyrollDB / SearchyrollEnrich
  * ========================================================================= */
 
-const DEBUG = true; // TEMPORARY: query-dump diagnostic for 404 diagnosis; flip back to false after capture
+const DEBUG = false;
 const label = "[Searchyroll]";
 
 browser.runtime.onMessage.addListener((message, _sender, sendResponse) => {
