@@ -271,7 +271,7 @@
     return;
   }
 
-  const API_URL = "https://graphql.anilist.co";
+  const API_URL = "https://searchyroll-n9zn7imo2-shadowforge-heavy-industries.vercel.app/graphql";
   const MIN_INTERVAL_MS = 700;
   const MAX_ALIASES = 10;
   const MAX_TAGS = 5;

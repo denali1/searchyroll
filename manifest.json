@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Searchyroll",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Unified search across Crunchyroll and Hidive — cross-platform genre, dub, and availability filtering in one anime search overlay.",
 
   "icons": {
