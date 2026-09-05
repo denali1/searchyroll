@@ -160,6 +160,60 @@
     }
   };
 
+  const BULK_CHUNK = 250;
+
+  // Bulk import for the cold-start catalog (Phase 6). Chunked into bounded
+  // transactions; each record still goes through shouldOverwrite so catalog
+  // data can never downgrade a richer existing record. Returns the number of
+  // records processed.
+  const bulkUpsert = async (records) => {
+    if (!Array.isArray(records) || records.length === 0) {
+      return 0;
+    }
+    const db = await openDB().catch(() => null);
+    if (!db) {
+      return 0;
+    }
+    let processed = 0;
+    for (let i = 0; i < records.length; i += BULK_CHUNK) {
+      const chunk = records.slice(i, i + BULK_CHUNK);
+      processed += await new Promise((resolve) => {
+        let transaction;
+        try {
+          transaction = db.transaction(STORE, "readwrite");
+        } catch (_e) {
+          resolve(0);
+          return;
+        }
+        const store = transaction.objectStore(STORE);
+        let done = 0;
+        for (const record of chunk) {
+          const normalized = Object.assign({}, record);
+          if (normalized.platformKey === undefined) {
+            normalized.platformKey = platformKeyOf(normalized);
+          }
+          const getRequest = store.get(normalized.platformKey);
+          getRequest.onsuccess = () => {
+            const existing = getRequest.result || null;
+            if (shouldOverwrite(existing, normalized)) {
+              try {
+                store.put(normalized);
+              } catch (_e) {}
+            }
+            done += 1;
+          };
+          getRequest.onerror = () => {
+            done += 1;
+          };
+        }
+        transaction.oncomplete = () => resolve(done);
+        transaction.onerror = () => resolve(done);
+        transaction.onabort = () => resolve(done);
+      });
+    }
+    return processed;
+  };
+
   const getTitle = async (platformKey) => {
     try {
       const db = await openDB();
@@ -248,6 +302,7 @@
   globalThis.SearchyrollDB = {
     openDB,
     upsertTitle,
+    bulkUpsert,
     getTitle,
     queryTitles,
     getAllTitles,
@@ -611,6 +666,230 @@
 })();
 
 /* ===========================================================================
+ * SearchyrollCatalog — cold-start bootstrap (Phase 6)
+ *
+ * Downloads the gzipped catalog artifact published to GitHub releases, and on
+ * a fresh install (or when the published catalog version advances) materializes
+ * each AniList-derived title into platform records and bulk-imports them into
+ * the shared IndexedDB. The search overlay then works immediately — no need to
+ * browse CR or Hidive first.
+ *
+ * LEGAL (Phase 6 brief): the artifact contains ONLY AniList-derived data
+ * (AniList metadata + streaming URLs from externalLinks). CR/Hidive proprietary
+ * catalog data and platform-specific fields (isSubbed, isDubbed, isSimulcast,
+ * audioLocales, subtitleLocales) never enter it — those fields are null on
+ * materialized records.
+ *
+ * All stages are fire-and-forget and individually guarded: any failure leaves
+ * the extension fully functional with an empty index. The version check is
+ * memoized per SW instance (checkPromise) and throttled to once per 24h
+ * (catalogCheckedAt in browser.storage.local) so SW revival never hammers
+ * GitHub.
+ * ========================================================================= */
+
+(function () {
+  if (globalThis.SearchyrollCatalog) {
+    return;
+  }
+
+  const DEBUG = false;
+  const label = "[Searchyroll]";
+
+  const CATALOG_OWNER = "denali1";
+  const CATALOG_REPO = "searchyroll";
+  const RAW_MANIFEST_URL =
+    "https://raw.githubusercontent.com/" + CATALOG_OWNER + "/" + CATALOG_REPO + "/HEAD/catalog/catalog-version.json";
+  const catalogAssetUrlFor = (version) =>
+    "https://github.com/" + CATALOG_OWNER + "/" + CATALOG_REPO + "/releases/download/catalog-v" + version + "/catalog.json.gz";
+
+  const STORAGE_VERSION_KEY = "catalogVersion";
+  const STORAGE_CHECKED_KEY = "catalogCheckedAt";
+  const CHECK_THROTTLE_MS = 24 * 60 * 60 * 1000;
+
+  let checkPromise = null;
+  let importBusy = false;
+
+  const readStorage = async (keys) => {
+    try {
+      const obj = await browser.storage.local.get(keys);
+      return obj || {};
+    } catch (_e) {
+      return {};
+    }
+  };
+
+  const writeStorage = async (obj) => {
+    try {
+      await browser.storage.local.set(obj);
+    } catch (_e) {}
+  };
+
+  // Materialize catalog records into platform records for IndexedDB.
+  // Keys are namespaced as platform:c-<anilistId> so they can never collide
+  // with live records (which are keyed by CR/Hidive numeric series ids).
+  const materializeCatalogRecords = (records) => {
+    if (!Array.isArray(records)) {
+      return [];
+    }
+    const out = [];
+    for (const rec of records) {
+      if (!rec || rec.anilistId === undefined || rec.anilistId === null) {
+        continue;
+      }
+      const base = {
+        id: "c-" + String(rec.anilistId),
+        title: rec.title || rec.titleEnglish || "",
+        titleEnglish: rec.titleEnglish || null,
+        anilistId: rec.anilistId,
+        malId: rec.malId || null,
+        anilistTitle: rec.title || null,
+        anilistStatus: rec.anilistStatus || null,
+        anilistFormat: rec.anilistFormat || null,
+        anilistEpisodes: rec.anilistEpisodes || null,
+        anilistSeason: rec.anilistSeason || null,
+        anilistSeasonYear: rec.anilistSeasonYear || null,
+        anilistGenres: Array.isArray(rec.anilistGenres) ? rec.anilistGenres : [],
+        anilistTags: Array.isArray(rec.anilistTags) ? rec.anilistTags : [],
+        studio: rec.studio || null,
+        averageScore: rec.averageScore || null,
+        isAdult: !!rec.isAdult,
+        seriesGroupId: rec.seriesGroupId || null,
+        type: "anime",
+        enriched: true,
+        enrichedAt: new Date().toISOString(),
+        isSubbed: null,
+        isDubbed: null,
+        isSimulcast: null,
+        audioLocales: null,
+        subtitleLocales: null,
+        catalogVersion: rec.catalogVersion || null,
+        catalogDate: rec.catalogDate || null,
+        url: null
+      };
+      const links = (rec.externalLinks && typeof rec.externalLinks === "object") ? rec.externalLinks : {};
+      const targets = [];
+      if (links.crunchyroll) {
+        targets.push({ platform: "crunchyroll", url: String(links.crunchyroll) });
+      }
+      if (links.hidive) {
+        targets.push({ platform: "hidive", url: String(links.hidive) });
+      }
+      if (targets.length === 0) {
+        targets.push({ platform: "catalog", url: null });
+      }
+      for (const target of targets) {
+        out.push(Object.assign({}, base, { platform: target.platform, url: target.url }));
+      }
+    }
+    return out;
+  };
+
+  const gzipToText = async (bytes) => {
+    const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream("gzip"));
+    return await new Response(stream).text();
+  };
+
+  const downloadAndImportCatalog = async (url) => {
+    if (importBusy) {
+      return false;
+    }
+    importBusy = true;
+    try {
+      let response;
+      try {
+        response = await fetch(url);
+      } catch (err) {
+        console.warn(label, "catalog download network error:", String(err));
+        return false;
+      }
+      if (!response || !response.ok) {
+        console.warn(label, "catalog download failed: HTTP", response && response.status);
+        return false;
+      }
+      let payload = null;
+      try {
+        const bytes = await response.arrayBuffer();
+        const text = await gzipToText(bytes);
+        payload = JSON.parse(text);
+      } catch (err) {
+        console.warn(label, "catalog decompress/parse failed:", String(err));
+        return false;
+      }
+      const records = (payload && Array.isArray(payload.records)) ? payload.records : [];
+      const version = (payload && typeof payload.version === "string") ? payload.version : null;
+      if (records.length === 0) {
+        console.warn(label, "catalog payload empty — skipped");
+        return false;
+      }
+      const materialized = materializeCatalogRecords(records);
+      const stored = await SearchyrollDB.bulkUpsert(materialized);
+      if (DEBUG) {
+        console.log(label, "catalog import:", stored, "records processed (materialized", materialized.length + ")");
+      }
+      if (version) {
+        await writeStorage({ [STORAGE_VERSION_KEY]: version });
+      }
+      return true;
+    } catch (err) {
+      console.warn(label, "catalog bootstrap error:", String(err));
+      return false;
+    } finally {
+      importBusy = false;
+    }
+  };
+
+  const checkCatalogVersion = async () => {
+    const now = Date.now();
+    const st = await readStorage([STORAGE_VERSION_KEY, STORAGE_CHECKED_KEY]);
+    const checkedAt = Number(st[STORAGE_CHECKED_KEY] || 0);
+    if (checkedAt && (now - checkedAt) < CHECK_THROTTLE_MS) {
+      return false; // throttled — checked recently
+    }
+    let manifest = null;
+    try {
+      const res = await fetch(RAW_MANIFEST_URL);
+      if (!res || !res.ok) {
+        throw new Error("HTTP " + (res && res.status));
+      }
+      manifest = await res.json();
+    } catch (err) {
+      console.warn(label, "catalog version check failed:", String(err));
+      await writeStorage({ [STORAGE_CHECKED_KEY]: now });
+      return false;
+    }
+    // Record the check regardless so SW revival doesn't hammer GitHub.
+    await writeStorage({ [STORAGE_CHECKED_KEY]: now });
+    if (!manifest || typeof manifest.version !== "string") {
+      return false;
+    }
+    if (typeof manifest.count !== "number" || manifest.count <= 0) {
+      return false; // placeholder / artifact not published yet — nothing to download
+    }
+    const current = st[STORAGE_VERSION_KEY] || null;
+    if (current === manifest.version) {
+      await writeStorage({ [STORAGE_VERSION_KEY]: current });
+      return false; // already current
+    }
+    return await downloadAndImportCatalog(catalogAssetUrlFor(manifest.version));
+  };
+
+  const bootstrap = () => {
+    if (!checkPromise) {
+      checkPromise = checkCatalogVersion().catch(() => {
+        checkPromise = null;
+      });
+    }
+    return checkPromise;
+  };
+
+  globalThis.SearchyrollCatalog = {
+    bootstrap,
+    materializeCatalogRecords,
+    catalogAssetUrlFor
+  };
+})();
+
+/* ===========================================================================
  * Message router — content scripts + popup -> SearchyrollDB / SearchyrollEnrich
  * ========================================================================= */
 
@@ -688,4 +967,10 @@ browser.runtime.onInstalled.addListener((details) => {
       browser.tabs.create({ url: browser.runtime.getURL("welcome.html") });
     } catch (_e) {}
   }
+  // Kick the catalog bootstrap (memoized — no-op if the startup check already ran).
+  SearchyrollCatalog.bootstrap();
 });
+
+// Cold-start catalog bootstrap: runs on every SW wake, memoized per instance
+// and throttled to once per 24h via the stored catalogCheckedAt timestamp.
+SearchyrollCatalog.bootstrap();
