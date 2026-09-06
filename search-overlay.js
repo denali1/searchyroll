@@ -699,6 +699,122 @@
 
   const platformLabel = (p) => (p === "crunchyroll" ? "Crunchyroll" : p === "hidive" ? "Hidive" : String(p || ""));
 
+  // MAL segment text: "MAL: 8.15 ★" with an optional "  #142" rank suffix.
+  // Returns null when no finite score is present.
+  const malScoreText = (score, rank) => {
+    const hasScore = typeof score === "number" && Number.isFinite(score);
+    if (!hasScore) {
+      return null;
+    }
+    let text = "MAL: " + score + " ★";
+    if (typeof rank === "number" && Number.isFinite(rank)) {
+      text += " #" + rank;
+    }
+    return text;
+  };
+
+  // Score row (Phase 8 Part 3). AniList averageScore and MAL score/rank are
+  // independent supplements: show each part only if present, and no row at
+  // all when neither exists. The AniList part keeps its own span so a
+  // late-arriving MAL score can be appended in place without a re-render.
+  const scoreRowHtml = (record) => {
+    const avg = record && record.averageScore;
+    const hasAvg = typeof avg === "number" && Number.isFinite(avg);
+    const malPart = malScoreText(record && record.malScore, record && record.malRank);
+    let html = "";
+    if (hasAvg) {
+      html += '<span class="syr-scores-anilist">AniList: ' + escapeHtml(avg) + "/100</span>";
+    }
+    if (malPart !== null) {
+      if (hasAvg) {
+        html += '<span class="syr-scores-sep">  ·  </span>';
+      }
+      html += '<span class="syr-scores-mal">' + escapeHtml(malPart) + "</span>";
+    }
+    return html ? '<div class="syr-card-meta syr-scores">' + html + "</div>" : "";
+  };
+
+  // In-place update of one card's score row when lazy MAL enrichment lands.
+  // Finds the card by its data-scorekey, then either fills the existing
+  // .syr-scores row (AniList already displayed) or creates the row. Never
+  // re-renders the result list.
+  const updateMalCard = (platformKey, malScore, malRank) => {
+    try {
+      if (!state.root) {
+        return;
+      }
+      const malPart = malScoreText(malScore, malRank);
+      if (malPart === null) {
+        return;
+      }
+      const key = String(platformKey || "");
+      const cards = state.root.querySelectorAll(".syr-card");
+      for (const card of cards) {
+        if (card.getAttribute("data-scorekey") !== key) {
+          continue;
+        }
+        let row = card.querySelector(".syr-scores");
+        const anilistEl = card.querySelector(".syr-scores-anilist");
+        const hasAni = anilistEl !== null;
+        if (!row) {
+          row = document.createElement("div");
+          row.className = "syr-card-meta syr-scores";
+          if (hasAni) {
+            const copy = document.createElement("span");
+            copy.className = "syr-scores-anilist";
+            copy.textContent = anilistEl.textContent;
+            row.appendChild(copy);
+            row.appendChild(document.createTextNode("  ·  "));
+          }
+          const genres = card.querySelector(".syr-genres");
+          if (genres) {
+            card.insertBefore(row, genres);
+          } else {
+            card.appendChild(row);
+          }
+        }
+        let mal = row.querySelector(".syr-scores-mal");
+        if (mal) {
+          mal.textContent = malPart;
+        } else {
+          try {
+            row.insertAdjacentHTML("beforeend", (hasAni ? '<span class="syr-scores-sep">  ·  </span>' : "") + '<span class="syr-scores-mal">' + escapeHtml(malPart) + "</span>");
+          } catch (_e) {}
+        }
+        break;
+      }
+    } catch (_e) {}
+  };
+
+  // Fire-and-forget lazy MAL enrichment: every rendered card whose record has
+  // a malId but no malScore yet asks the background to fetch + merge once.
+  // Rendering is never blocked — the card updates in place when the response
+  // arrives. The background coalesces duplicate requests and enforces the
+  // 1 req/sec MAL budget.
+  const requestMalForCards = (matched) => {
+    for (const r of matched || []) {
+      if (!r || r.malId === null || r.malId === undefined) {
+        continue;
+      }
+      if (typeof r.malScore === "number" && Number.isFinite(r.malScore)) {
+        continue;
+      }
+      const key = r.platformKey;
+      if (!key) {
+        continue;
+      }
+      try {
+        browser.runtime.sendMessage({ action: "enrichMalTitle", platformKey: key })
+          .then((res) => {
+            if (res && res.ok && res.malScore !== null && res.malScore !== undefined) {
+              updateMalCard(key, res.malScore, res.malRank);
+            }
+          })
+          .catch(() => {});
+      } catch (_e) {}
+    }
+  };
+
   const cardHtml = (record) => {
     const platform = record.platform === "crunchyroll" ? "CR" : platformLabel(record.platform);
     const platformCls = record.platform === "crunchyroll" ? "syr-badge-cr" : "syr-badge-hidive";
@@ -713,7 +829,7 @@
     }
     const dubsub = parts.length > 0 ? parts.join(" · ") : null;
     const watchUrl = record.url || "#";
-    let html = '<div class="syr-card">';
+    let html = '<div class="syr-card" data-scorekey="' + escapeHtml(record.platformKey) + '">';
     html += '<div class="syr-card-title-row">';
     html += '<a class="syr-card-title" href="' + escapeHtml(watchUrl) + '">' + escapeHtml(record.title) + "</a>";
     html += '<span class="syr-badge ' + platformCls + '">' + escapeHtml(platform) + "</span>";
@@ -726,6 +842,10 @@
     }
     if (dubsub) {
       html += '<div class="syr-card-meta"><span class="syr-label">Audio:</span> ' + escapeHtml(dubsub) + "</div>";
+    }
+    const scores = scoreRowHtml(record);
+    if (scores) {
+      html += scores;
     }
     if (genres.length > 0) {
       html += '<div class="syr-genres">' + genres.map((g) => '<span class="syr-genre">' + escapeHtml(g) + "</span>").join("") + "</div>";
@@ -765,6 +885,7 @@
         return;
       }
       el.innerHTML = matched.map(cardHtml).join("");
+      requestMalForCards(matched);
     });
   };
 

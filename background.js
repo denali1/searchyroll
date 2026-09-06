@@ -17,6 +17,14 @@
 
 "use strict";
 
+// MAL API v2 unauthenticated read (Phase 8 Part 3). Public metadata (mean,
+// rank, popularity) requires only the X-MAL-CLIENT-ID header. The ID is
+// considered semi-public for unauthenticated reads (same as any mobile app)
+// and ships in-extension by design. TODO BEFORE VERIFYING/SHIPPING: replace
+// this placeholder with a real MAL API client ID or MAL returns HTTP 400
+// ("Invalid client id"), which is handled gracefully as a silent null score.
+const MAL_CLIENT_ID = "YOUR_MAL_CLIENT_ID";
+
 /* ===========================================================================
  * SearchyrollDB — IndexedDB catalog layer
  * ========================================================================= */
@@ -234,6 +242,52 @@
     }
   };
 
+  // Merges supplementary fields (malScore/malRank/malPopularity) into an
+  // existing record in place. Deliberately bypasses shouldOverwrite: the
+  // incoming record carries the SAME enrichedAt the row already has, so a
+  // normal upsert would reject it (both-enriched rows only overwrite on a
+  // strictly newer enrichedAt). Returns the merged record, or null if the
+  // target record no longer exists (nothing to merge into).
+  const mergeMALFields = async (platformKey, fields) => {
+    try {
+      const db = await openDB();
+      return await new Promise((resolve) => {
+        let transaction;
+        try {
+          transaction = db.transaction(STORE, "readwrite");
+        } catch (_e) {
+          resolve(null);
+          return;
+        }
+        const store = transaction.objectStore(STORE);
+        const getRequest = store.get(platformKey);
+        getRequest.onsuccess = () => {
+          const existing = getRequest.result || null;
+          if (!existing) {
+            resolve(null);
+            return;
+          }
+          const merged = Object.assign({}, existing, fields || {});
+          try {
+            store.put(merged);
+          } catch (_e) {
+            transaction.abort();
+            resolve(null);
+            return;
+          }
+          transaction.oncomplete = () => resolve(merged);
+          transaction.onerror = () => resolve(null);
+          transaction.onabort = () => resolve(null);
+        };
+        getRequest.onerror = () => {
+          resolve(null);
+        };
+      });
+    } catch (_e) {
+      return null;
+    }
+  };
+
   const getAllTitles = async () => {
     try {
       const db = await openDB();
@@ -382,6 +436,7 @@
     upsertTitle,
     bulkUpsert,
     getTitle,
+    mergeMALFields,
     queryTitles,
     getAllTitles,
     clearLiveRecords,
@@ -801,6 +856,184 @@
 })();
 
 /* ===========================================================================
+ * SearchyrollMal — MAL API v2 enrichment client (Phase 8 Part 3)
+ *
+ * Lazy, unauthenticated read-only enrichment. The overlay asks for a title's
+ * MAL score/rank/popularity by platformKey (not malId — that lives on the
+ * stored record), so enrichMal looks the record up, copies its malId, and
+ * fetches https://api.myanimelist.net/v2/anime/{id}?fields=mean,rank,popularity
+ * with the X-MAL-CLIENT-ID header.
+ *
+ * Rate limiting: MAL does not document a public limit; we enforce a
+ * conservative 1 request/second (MAL_INTERVAL_MS) with a single FIFO queue.
+ * Robustness rules:
+ *   - malId null, a stored malScore, or a platformKey attempted this session
+ *     (success or failure) => skip with NO network call (attempted is an
+ *     in-memory set; a title that genuinely 404s on MAL is re-probed at most
+ *     once per service-worker session, never on every card render).
+ *   - 404 is a valid "not on MAL" result (silent), 429 logs once and is not
+ *     retried this session, any other failure logs a warning. fetchMalData
+ *     NEVER throws — the caller always gets a value or null.
+ *   - enrichMalTitle requests for the same platformKey while one is still
+ *     queued/in-flight COALESCE onto a single result promise, so multi-card
+ *     renders never double-fetch.
+ *   - Persistence goes through SearchyrollDB.mergeMALFields (bypasses
+ *     shouldOverwrite; see that doc block for why).
+ * ========================================================================= */
+
+(function () {
+  if (globalThis.SearchyrollMal) {
+    return;
+  }
+
+  const label = "[Searchyroll]";
+  const MAL_API_BASE = "https://api.myanimelist.net/v2/";
+  const MAL_INTERVAL_MS = 1000;
+
+  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+  // Maps values like 8.15 (mean), 142 (rank), 89 (popularity); a present-but
+  // empty field (MAL returns null for an unranked title) maps to null rather
+  // than 0.
+  const numOrNull = (value) => {
+    if (value === null || value === undefined || value === "") {
+      return null;
+    }
+    const n = Number(value);
+    return Number.isFinite(n) ? n : null;
+  };
+
+  let queue = [];
+  let draining = false;
+  let lastRequestAt = 0;
+  const attempted = new Set();
+  const pending = new Map();
+
+  // GET /anime/{malId}?fields=mean,rank,popularity with X-MAL-CLIENT-ID.
+  // Returns { malScore, malRank, malPopularity } on 200, null otherwise.
+  // Never throws.
+  const fetchMalData = async (malId) => {
+    const id = Number(malId);
+    if (!Number.isFinite(id) || id <= 0) {
+      console.warn(label, "MAL: invalid malId", malId);
+      return null;
+    }
+    let response;
+    try {
+      response = await fetch(MAL_API_BASE + "anime/" + id + "?fields=mean,rank,popularity", {
+        headers: { "X-MAL-CLIENT-ID": MAL_CLIENT_ID }
+      });
+    } catch (err) {
+      console.warn(label, "MAL network error:", String(err));
+      return null;
+    }
+    lastRequestAt = Date.now();
+    if (!response) {
+      return null;
+    }
+    if (response.status === 404) {
+      console.warn(label, "MAL: no entry for id", id, "(404 is valid for a non-MAL title)");
+      return null;
+    }
+    if (response.status === 429) {
+      console.warn(label, "MAL: rate limited (429); not retrying this session");
+      return null;
+    }
+    if (!response.ok) {
+      let detail = "";
+      try {
+        detail = await response.text();
+      } catch (_e) {}
+      console.warn(label, "MAL responded with status", response.status, "body:", detail ? detail.slice(0, 500) : "(no body)");
+      return null;
+    }
+    let json;
+    try {
+      json = await response.json();
+    } catch (_e) {
+      return null;
+    }
+    if (!json || typeof json !== "object") {
+      return null;
+    }
+    return {
+      malScore: numOrNull(json.mean),
+      malRank: numOrNull(json.rank),
+      malPopularity: numOrNull(json.popularity)
+    };
+  };
+
+  // Runs a single queued job: re-reads the record (it may have changed while
+  // queued), skips silently on no malId / already-scored / already-attempted,
+  // otherwise fetches and merges. Always resolves — never throws.
+  const processMalJob = async (job) => {
+    if (attempted.has(job.platformKey)) {
+      job.resolve({ ok: true, skipped: true });
+      return;
+    }
+    const record = await SearchyrollDB.getTitle(job.platformKey);
+    if (!record || !record.malId) {
+      job.resolve({ ok: true, skipped: true });
+      return;
+    }
+    const fields = await fetchMalData(record.malId);
+    if (fields && fields.malScore !== null) {
+      await SearchyrollDB.mergeMALFields(job.platformKey, fields);
+      attempted.add(job.platformKey);
+      job.resolve({ ok: true, skipped: false, fields: fields });
+      return;
+    }
+    attempted.add(job.platformKey);
+    job.resolve({ ok: false, error: "mal fetch returned nothing" });
+  };
+
+  const drainMal = async () => {
+    draining = true;
+    while (queue.length > 0) {
+      const job = queue.shift();
+      const elapsed = Date.now() - lastRequestAt;
+      if (elapsed < MAL_INTERVAL_MS) {
+        await sleep(MAL_INTERVAL_MS - elapsed);
+      }
+      try {
+        await processMalJob(job);
+      } catch (_e) {
+        job.resolve({ ok: false, error: "mal job failed" });
+      }
+    }
+    draining = false;
+  };
+
+  const enrichMal = (platformKey) => {
+    const key = String(platformKey || "");
+    if (!key) {
+      return Promise.resolve({ ok: false, error: "no platformKey" });
+    }
+    if (pending.has(key)) {
+      return pending.get(key);
+    }
+    const promise = new Promise((resolve) => {
+      queue.push({ platformKey: key, resolve: resolve });
+      if (!draining) {
+        drainMal();
+      }
+    });
+    promise.finally(() => {
+      if (pending.get(key) === promise) {
+        pending.delete(key);
+      }
+    });
+    pending.set(key, promise);
+    return promise;
+  };
+
+  globalThis.SearchyrollMal = {
+    enrichMal,
+    fetchMalData
+  };
+})();
+
+/* ===========================================================================
  * SearchyrollCatalog — cold-start bootstrap (Phase 6)
  *
  * Downloads the gzipped catalog artifact published to GitHub releases, and on
@@ -1090,8 +1323,41 @@ browser.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   }
   if (action === "enrichTitle") {
     SearchyrollEnrich.enrichRecord(message.record || null)
-      .then((record) => sendResponse({ ok: true, record: record || null }))
+      .then(async (record) => {
+        const enriched = record || null;
+        // Preserve previously-stored MAL fields across an AniList re-enrich:
+        // the content script rebuilds records fresh from the platform API, so
+        // a wholesale replace would otherwise drop malScore/malRank/
+        // malPopularity on every refresh.
+        if (enriched && (enriched.malScore === undefined || enriched.malScore === null)) {
+          const key = enriched.platformKey || SearchyrollDB.platformKeyOf(enriched);
+          const existing = key ? await SearchyrollDB.getTitle(key) || null : null;
+          if (existing && existing.malScore !== null && existing.malScore !== undefined) {
+            enriched.malScore = existing.malScore;
+            enriched.malRank = existing.malRank !== undefined && existing.malRank !== null ? existing.malRank : null;
+            enriched.malPopularity = existing.malPopularity !== undefined && existing.malPopularity !== null ? existing.malPopularity : null;
+          }
+        }
+        sendResponse({ ok: true, record: enriched || null });
+      })
       .catch(() => sendResponse({ ok: false, error: "enrich failed" }));
+    return true;
+  }
+  if (action === "enrichMalTitle") {
+    SearchyrollMal.enrichMal(message.platformKey)
+      .then((result) => {
+        if (result && result.ok && result.fields) {
+          sendResponse({
+            ok: true,
+            malScore: result.fields.malScore,
+            malRank: result.fields.malRank,
+            malPopularity: result.fields.malPopularity
+          });
+        } else {
+          sendResponse({ ok: false });
+        }
+      })
+      .catch(() => sendResponse({ ok: false, error: "enrichMal failed" }));
     return true;
   }
   if (action === "openWelcome") {
