@@ -141,6 +141,7 @@
       border-bottom: 1px solid #3a3a5a;
     }
     .syr-search input {
+      box-sizing: border-box;
       width: 100%;
       padding: 10px 12px;
       font-size: 15px;
