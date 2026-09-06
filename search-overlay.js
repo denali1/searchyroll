@@ -28,9 +28,10 @@
   }
 
   const ACK_KEY = "searchyrollDisclaimerAck";
+  const SETTINGS_KEY = "searchyrollSettings";
   const STYLE_ID = "syr-overlay-style";
   const HOST_ID = "syr-overlay-host";
-  const DEBUG = false;
+  let DEBUG = false;
 
   const CSS = `
     .syr-host {
@@ -109,6 +110,21 @@
       font-size: 18px;
       color: #e85d04;
     }
+    .syr-header-actions {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .syr-gear {
+      background: transparent;
+      color: #b8b8d0;
+      border: none;
+      font-size: 18px;
+      cursor: pointer;
+      line-height: 1;
+      padding: 4px 8px;
+    }
+    .syr-gear:hover { color: #ffffff; }
     .syr-close {
       background: transparent;
       color: #b8b8d0;
@@ -290,7 +306,8 @@
     open: false,
     toastTimer: null,
     searchTimer: null,
-    genreOptions: []
+    genreOptions: [],
+    adultContent: false
   };
 
   const ensureHost = () => {
@@ -322,6 +339,24 @@
       browser.storage.local.get(ACK_KEY).then((result) => {
         state.acked = (result && result[ACK_KEY]) === true;
         syncButton();
+      }).catch(() => {});
+    } catch (_e) {}
+  };
+
+  const applySettings = (settings) => {
+    const s = (settings && typeof settings === "object") ? settings : {};
+    if (typeof s.adultContent === "boolean") {
+      state.adultContent = s.adultContent;
+    }
+    if (typeof s.debugMode === "boolean") {
+      DEBUG = s.debugMode;
+    }
+  };
+
+  const readSettings = () => {
+    try {
+      browser.storage.local.get(SETTINGS_KEY).then((result) => {
+        applySettings(result && result[SETTINGS_KEY]);
       }).catch(() => {});
     } catch (_e) {}
   };
@@ -399,6 +434,12 @@
     } catch (_e) {}
   };
 
+  const openSettings = () => {
+    try {
+      browser.runtime.sendMessage({ action: "openSettings" }).catch(() => {});
+    } catch (_e) {}
+  };
+
   const toggle = () => {
     if (!state.acked) {
       showToast();
@@ -420,7 +461,10 @@
         <div class="syr-modal" role="dialog" aria-modal="true" aria-label="Searchyroll search">
           <div class="syr-header">
             <h2>Searchyroll</h2>
-            <button type="button" class="syr-close" id="syr-close" aria-label="Close">×</button>
+            <div class="syr-header-actions">
+              <button type="button" class="syr-gear" id="syr-settings" aria-label="Open Searchyroll settings" title="Settings">⚙</button>
+              <button type="button" class="syr-close" id="syr-close" aria-label="Close">×</button>
+            </div>
           </div>
           <div class="syr-search">
             <input id="syr-search-input" type="text" placeholder="Search titles by name..." autocomplete="off">
@@ -561,6 +605,11 @@
       close.dataset.wired = "1";
       close.addEventListener("click", closeOverlay);
     }
+    const settingsBtn = state.root.getElementById("syr-settings");
+    if (settingsBtn && !settingsBtn.dataset.wired) {
+      settingsBtn.dataset.wired = "1";
+      settingsBtn.addEventListener("click", openSettings);
+    }
     const input = state.root.getElementById("syr-search-input");
     if (input && !input.dataset.wired) {
       input.dataset.wired = "1";
@@ -583,7 +632,7 @@
   };
 
   const currentFilters = () => {
-    const filters = {};
+    const filters = { adultContent: state.adultContent === true };
     if (!state.root) {
       return filters;
     }
@@ -719,7 +768,7 @@
   };
 
   const loadGenres = () => {
-    queryTitles({}).then((records) => {
+    queryTitles({ adultContent: state.adultContent === true }).then((records) => {
       const set = new Set();
       for (const r of records) {
         if (Array.isArray(r.anilistGenres)) {
@@ -747,11 +796,18 @@
     state.platform = platform || null;
     ensureHost();
     readAck();
+    readSettings();
     try {
       browser.storage.onChanged.addListener((changes, area) => {
-        if (area === "local" && changes && changes[ACK_KEY]) {
+        if (area !== "local" || !changes) {
+          return;
+        }
+        if (changes[ACK_KEY]) {
           state.acked = changes[ACK_KEY].newValue === true;
           syncButton();
+        }
+        if (changes[SETTINGS_KEY]) {
+          applySettings(changes[SETTINGS_KEY].newValue || {});
         }
       });
     } catch (_e) {}
@@ -763,8 +819,13 @@
     toggle();
   };
 
+  const setSettings = (s) => {
+    applySettings(s);
+  };
+
   globalThis.SearchyrollOverlay = {
     init,
-    handleToggle
+    handleToggle,
+    setSettings
   };
 })();

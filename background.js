@@ -258,6 +258,9 @@
     if (!filters) {
       return true;
     }
+    if (filters.adultContent !== true && record.isAdult === true) {
+      return false;
+    }
     if (filters.platform !== undefined && filters.platform !== null && filters.platform !== record.platform) {
       return false;
     }
@@ -299,6 +302,81 @@
     return all.filter((record) => matchesFilter(record, filters || {}));
   };
 
+  // Deletes only live-intercepted records: platformKey matches
+  // ^(crunchyroll|hidive): and the id segment does not start with "c-"
+  // (catalog-materialized records are keyed platform:c-<anilistId>).
+  const clearLiveRecords = async () => {
+    try {
+      const db = await openDB();
+      return await new Promise((resolve) => {
+        let transaction;
+        try {
+          transaction = db.transaction(STORE, "readwrite");
+        } catch (_e) {
+          resolve(0);
+          return;
+        }
+        const store = transaction.objectStore(STORE);
+        const getAllRequest = store.getAll();
+        const keysToDelete = [];
+        getAllRequest.onsuccess = () => {
+          const records = getAllRequest.result || [];
+          for (const record of records) {
+            const key = record && record.platformKey ? String(record.platformKey) : "";
+            if (!/^(crunchyroll|hidive):/.test(key)) {
+              continue;
+            }
+            const idPart = key.slice(key.indexOf(":") + 1);
+            if (idPart.indexOf("c-") === 0) {
+              continue;
+            }
+            keysToDelete.push(key);
+          }
+          for (const key of keysToDelete) {
+            try {
+              store.delete(key);
+            } catch (_e) {}
+          }
+        };
+        transaction.oncomplete = () => resolve(keysToDelete.length);
+        transaction.onerror = () => resolve(keysToDelete.length);
+        transaction.onabort = () => resolve(keysToDelete.length);
+      });
+    } catch (_e) {
+      return 0;
+    }
+  };
+
+  // Deletes all records in the titles store. Returns the count.
+  const clearAll = async () => {
+    try {
+      const db = await openDB();
+      return await new Promise((resolve) => {
+        let transaction;
+        try {
+          transaction = db.transaction(STORE, "readwrite");
+        } catch (_e) {
+          resolve(0);
+          return;
+        }
+        const store = transaction.objectStore(STORE);
+        const countRequest = store.count();
+        let total = 0;
+        countRequest.onsuccess = () => {
+          total = countRequest.result || 0;
+        };
+        try {
+          store.clear();
+        } catch (_e) {}
+        transaction.oncomplete = () => resolve(total);
+        transaction.onerror = () => resolve(total);
+        transaction.onabort = () => resolve(total);
+      });
+    } catch (_e) {
+      return 0;
+    }
+  };
+
   globalThis.SearchyrollDB = {
     openDB,
     upsertTitle,
@@ -306,7 +384,64 @@
     getTitle,
     queryTitles,
     getAllTitles,
+    clearLiveRecords,
+    clearAll,
     platformKeyOf
+  };
+})();
+
+/* ===========================================================================
+ * SearchyrollSettings — shared user-preference store
+ *
+ * All user settings live under the single browser.storage.local key
+ * "searchyrollSettings" (a JSON object). This IIFE caches the current value,
+ * refreshes it from storage, and keeps it live via storage.onChanged so the
+ * background, content scripts, and overlay all read one consistent view.
+ * ========================================================================= */
+
+(function () {
+  if (globalThis.SearchyrollSettings) {
+    return;
+  }
+
+  const KEY = "searchyrollSettings";
+  const DEFAULT_SETTINGS = {
+    adultContent: false, // show isAdult:true records in search results
+    adultContentAck: false, // user confirmed 18+ for adult content toggle
+    debugMode: false, // enables DEBUG logging across content scripts
+    lastClearBrowsingData: null, // ISO timestamp of last browsing data clear
+    lastCatalogReset: null // ISO timestamp of last full catalog reset
+  };
+
+  let current = Object.assign({}, DEFAULT_SETTINGS);
+
+  const load = async () => {
+    try {
+      const obj = await browser.storage.local.get(KEY);
+      current = Object.assign({}, DEFAULT_SETTINGS, (obj && obj[KEY]) || {});
+    } catch (_e) {}
+    return current;
+  };
+
+  const get = () => current;
+
+  const debug = () => current.debugMode === true;
+
+  try {
+    browser.storage.onChanged.addListener((changes, area) => {
+      if (area === "local" && changes && changes[KEY]) {
+        current = Object.assign({}, DEFAULT_SETTINGS, changes[KEY].newValue || {});
+      }
+    });
+  } catch (_e) {}
+
+  load();
+
+  globalThis.SearchyrollSettings = {
+    load,
+    get,
+    debug,
+    DEFAULT_SETTINGS
   };
 })();
 
@@ -692,7 +827,6 @@
     return;
   }
 
-  const DEBUG = false;
   const label = "[Searchyroll]";
 
   const CATALOG_OWNER = "denali1";
@@ -823,7 +957,7 @@
       }
       const materialized = materializeCatalogRecords(records);
       const stored = await SearchyrollDB.bulkUpsert(materialized);
-      if (DEBUG) {
+      if (SearchyrollSettings.debug()) {
         console.log(label, "catalog import:", stored, "records processed (materialized", materialized.length + ")");
       }
       if (version) {
@@ -882,8 +1016,21 @@
     return checkPromise;
   };
 
+  // Forces a full re-check + re-download after a catalog reset: clears the
+  // memoized promise and import lock, removes the stored version/checked
+  // timestamps so checkCatalogVersion treats the local catalog as absent,
+  // then boots the version check again (which re-fetches the manifest and,
+  // on any published version, re-imports the artifact).
+  const resetBootstrap = async () => {
+    checkPromise = null;
+    importBusy = false;
+    await writeStorage({ [STORAGE_VERSION_KEY]: "", [STORAGE_CHECKED_KEY]: 0 });
+    return bootstrap();
+  };
+
   globalThis.SearchyrollCatalog = {
     bootstrap,
+    resetBootstrap,
     materializeCatalogRecords,
     catalogAssetUrlFor
   };
@@ -893,8 +1040,18 @@
  * Message router — content scripts + popup -> SearchyrollDB / SearchyrollEnrich
  * ========================================================================= */
 
-const DEBUG = false;
 const label = "[Searchyroll]";
+const SETTINGS_KEY = "searchyrollSettings";
+
+// Writes settings back to storage, merging over the current stored value so
+// concurrent writers (settings page, content scripts) do not clobber each
+// other's fields.
+const writeSettings = async (patch) => {
+  const existing = await SearchyrollSettings.load();
+  const merged = Object.assign({}, existing, patch || {});
+  await browser.storage.local.set({ [SETTINGS_KEY]: merged });
+  return merged;
+};
 
 browser.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (!message || typeof message !== "object") {
@@ -905,7 +1062,7 @@ browser.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (action === "upsertTitle") {
     SearchyrollDB.upsertTitle(message.record)
       .then((result) => {
-        if (DEBUG) {
+        if (SearchyrollSettings.debug()) {
           console.log(label, "upserted", (message.record && message.record.platformKey) || "", result);
         }
         sendResponse({ ok: true, record: result || null });
@@ -942,6 +1099,86 @@ browser.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       browser.tabs.create({ url: browser.runtime.getURL("welcome.html") });
     } catch (_e) {}
     sendResponse({ ok: true });
+    return true;
+  }
+  if (action === "openSettings") {
+    try {
+      browser.tabs.create({ url: browser.runtime.getURL("settings.html") });
+    } catch (_e) {}
+    sendResponse({ ok: true });
+    return true;
+  }
+  if (action === "getSettings") {
+    SearchyrollSettings.load()
+      .then((settings) => sendResponse({ ok: true, settings: settings }))
+      .catch(() => sendResponse({ ok: false, error: "getSettings failed" }));
+    return true;
+  }
+  if (action === "saveSettings") {
+    writeSettings(message.settings || {})
+      .then((settings) => sendResponse({ ok: true, settings: settings }))
+      .catch(() => sendResponse({ ok: false, error: "saveSettings failed" }));
+    return true;
+  }
+  if (action === "getExtensionVersion") {
+    try {
+      const version = browser.runtime.getManifest().version;
+      sendResponse({ ok: true, version: String(version || "") });
+    } catch (_e) {
+      sendResponse({ ok: false, error: "getExtensionVersion failed" });
+    }
+    return true;
+  }
+  if (action === "clearBrowsingData") {
+    // preview: true returns the live-record count without deleting; the
+    // settings page uses it to build the confirmation dialog text.
+    if (message.preview === true) {
+      SearchyrollDB.getAllTitles()
+        .then((records) => {
+          let count = 0;
+          for (const record of records || []) {
+            const key = record && record.platformKey ? String(record.platformKey) : "";
+            if (/^(crunchyroll|hidive):/.test(key)) {
+              const idPart = key.slice(key.indexOf(":") + 1);
+              if (idPart.indexOf("c-") !== 0) {
+                count += 1;
+              }
+            }
+          }
+          sendResponse({ ok: true, count: count });
+        })
+        .catch(() => sendResponse({ ok: false, error: "clearBrowsingData preview failed" }));
+      return true;
+    }
+    SearchyrollDB.clearLiveRecords()
+      .then(async (count) => {
+        try {
+          await writeSettings({ lastClearBrowsingData: new Date().toISOString() });
+        } catch (_e) {}
+        sendResponse({ ok: true, count: count || 0 });
+      })
+      .catch(() => sendResponse({ ok: false, error: "clearBrowsingData failed" }));
+    return true;
+  }
+  if (action === "resetCatalog") {
+    // preview: true returns the total record count without wiping.
+    if (message.preview === true) {
+      SearchyrollDB.getAllTitles()
+        .then((records) => sendResponse({ ok: true, count: (records || []).length }))
+        .catch(() => sendResponse({ ok: false, error: "resetCatalog preview failed" }));
+      return true;
+    }
+    SearchyrollDB.clearAll()
+      .then(async (count) => {
+        try {
+          await writeSettings({ lastCatalogReset: new Date().toISOString() });
+        } catch (_e) {}
+        try {
+          await SearchyrollCatalog.resetBootstrap();
+        } catch (_e) {}
+        sendResponse({ ok: true, count: count || 0 });
+      })
+      .catch(() => sendResponse({ ok: false, error: "resetCatalog failed" }));
     return true;
   }
   sendResponse({ ok: false, error: "unknown action" });

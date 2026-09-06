@@ -1,0 +1,359 @@
+/* Searchyroll settings page — dark theme (#1a1a2e background, #e85d04 accent). */
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  background: #1a1a2e;
+  color: #ffffff;
+  line-height: 1.5;
+}
+
+.syr-settings {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 40px 24px 80px;
+}
+
+/* ---- Header ---- */
+
+.syr-header h1 {
+  font-size: 26px;
+  margin: 0 0 4px;
+  color: #ffffff;
+}
+
+.syr-tagline {
+  margin: 0 0 32px;
+  color: #9a9ab8;
+  font-size: 14px;
+}
+
+/* ---- Sections ---- */
+
+.syr-section {
+  margin-bottom: 40px;
+}
+
+.syr-section h2 {
+  font-size: 17px;
+  margin: 0 0 18px;
+  padding-bottom: 8px;
+  border-bottom: 2px solid #e85d04;
+  color: #ffffff;
+}
+
+.syr-control-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 14px 0;
+  border-bottom: 1px solid #2a2a44;
+}
+
+.syr-control-copy {
+  flex: 1;
+  min-width: 0;
+}
+
+.syr-label {
+  display: inline-block;
+  font-weight: 600;
+  font-size: 15px;
+  color: #ffffff;
+}
+
+.syr-note {
+  margin: 6px 0 0;
+  font-size: 13px;
+  color: #9a9ab8;
+}
+
+.syr-muted-note {
+  font-size: 12px;
+  color: #6f6f8f;
+}
+
+/* ---- Toggle switches ---- */
+
+.syr-toggle {
+  position: relative;
+  display: inline-block;
+  width: 46px;
+  height: 26px;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.syr-toggle input {
+  position: absolute;
+  opacity: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  cursor: pointer;
+}
+
+.syr-toggle-track {
+  position: absolute;
+  inset: 0;
+  background: #3a3a5a;
+  border-radius: 13px;
+  transition: background-color 0.15s ease;
+}
+
+.syr-toggle-track::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #ffffff;
+  transition: transform 0.15s ease;
+}
+
+.syr-toggle input:checked + .syr-toggle-track {
+  background: #e85d04;
+}
+
+.syr-toggle input:checked + .syr-toggle-track::after {
+  transform: translateX(20px);
+}
+
+.syr-toggle input:focus-visible + .syr-toggle-track {
+  outline: 2px solid #f06a12;
+  outline-offset: 2px;
+}
+
+/* ---- Buttons ---- */
+
+.syr-btn {
+  padding: 9px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  font-family: inherit;
+  color: #ffffff;
+  background: #241f2e;
+  border: 1px solid #3a3a5a;
+  border-radius: 6px;
+  cursor: pointer;
+  text-decoration: none;
+  display: inline-block;
+  text-align: center;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.syr-btn:hover,
+.syr-btn:focus-visible {
+  background: #2f2a44;
+  border-color: #4a4a6a;
+}
+
+.syr-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.syr-btn-primary {
+  background: #e85d04;
+  border-color: #e85d04;
+}
+
+.syr-btn-primary:hover,
+.syr-btn-primary:focus-visible {
+  background: #f06a12;
+  border-color: #f06a12;
+}
+
+.syr-btn-primary:disabled {
+  background: #e85d04;
+  border-color: #e85d04;
+}
+
+.syr-btn-danger {
+  background: transparent;
+  border-color: #e85d04;
+  color: #e85d04;
+}
+
+.syr-btn-danger:hover,
+.syr-btn-danger:focus-visible {
+  background: rgba(232, 93, 4, 0.12);
+  border-color: #f06a12;
+}
+
+.syr-btn-link {
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.syr-btn-link:hover,
+.syr-btn-link:focus-visible {
+  background: #2f2a44;
+  border-color: #4a4a6a;
+}
+
+/* ---- Adult content gate ---- */
+
+.syr-adult-gate {
+  margin-top: 12px;
+  padding: 14px 16px;
+  border: 1px solid #e85d04;
+  border-radius: 8px;
+  background: #241f2e;
+}
+
+.syr-gate-check {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 600;
+  color: #ffcf9e;
+}
+
+.syr-gate-check input {
+  width: 16px;
+  height: 16px;
+  accent-color: #e85d04;
+}
+
+.syr-gate-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+/* ---- Shortcut ---- */
+
+.syr-shortcut {
+  margin: 8px 0 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: #e85d04;
+}
+
+/* ---- Links ---- */
+
+.syr-links,
+.syr-charity-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  margin-top: 12px;
+}
+
+.syr-charity-links {
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.syr-links a,
+.syr-charity-links a {
+  color: #e85d04;
+  text-decoration: none;
+  font-size: 14px;
+}
+
+.syr-links a:hover,
+.syr-charity-links a:hover,
+.syr-links a:focus-visible,
+.syr-charity-links a:focus-visible {
+  text-decoration: underline;
+}
+
+/* ---- Dialog ---- */
+
+.syr-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  z-index: 1000;
+}
+
+.syr-dialog-backdrop.syr-open {
+  display: flex;
+}
+
+.syr-dialog {
+  max-width: 460px;
+  width: 100%;
+  background: #1a1a2e;
+  border: 1px solid #3a3a5a;
+  border-radius: 10px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+  padding: 22px 24px;
+}
+
+.syr-dialog h3 {
+  margin: 0 0 10px;
+  font-size: 17px;
+  color: #e85d04;
+}
+
+.syr-dialog p {
+  margin: 0 0 22px;
+  font-size: 14px;
+  color: #d8d8e8;
+  line-height: 1.5;
+}
+
+.syr-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+/* ---- Toast ---- */
+
+.syr-toast {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: 24px;
+  max-width: 90vw;
+  background: #241f2e;
+  color: #ffffff;
+  border: 1px solid #e85d04;
+  border-radius: 8px;
+  padding: 12px 18px;
+  font-size: 14px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
+  z-index: 1100;
+}
+
+.syr-toast.syr-toast-error {
+  border-color: #e53e3e;
+}
+
+/* ---- Responsive ---- */
+
+@media (max-width: 520px) {
+  .syr-settings {
+    padding: 24px 16px 56px;
+  }
+
+  .syr-control-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .syr-btn-link {
+    white-space: normal;
+  }
+}

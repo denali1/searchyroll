@@ -9,7 +9,7 @@
 
 "use strict";
 
-const DEBUG = false;
+let DEBUG = false;
 const HIT_ATTR = "data-searchyroll-hidive";
 const label = "[Searchyroll Hidive]";
 const seen = new Set();
@@ -170,6 +170,32 @@ new MutationObserver((muts) => {
     }
   }
 }).observe(document.documentElement, { attributes: true, attributeFilter: [HIT_ATTR], subtree: true });
+
+const SETTINGS_KEY = "searchyrollSettings";
+const applySettings = (settings) => {
+  const s = (settings && typeof settings === "object") ? settings : {};
+  if (typeof s.debugMode === "boolean") {
+    DEBUG = s.debugMode;
+  }
+  if (typeof globalThis.SearchyrollOverlay === "object" && globalThis.SearchyrollOverlay && typeof globalThis.SearchyrollOverlay.setSettings === "function") {
+    globalThis.SearchyrollOverlay.setSettings(s);
+  }
+};
+const readSettings = () => {
+  try {
+    browser.storage.local.get(SETTINGS_KEY).then((obj) => {
+      applySettings((obj && obj[SETTINGS_KEY]) || {});
+    }).catch(() => {});
+  } catch (_e) {}
+};
+readSettings();
+try {
+  browser.storage.onChanged.addListener((changes, area) => {
+    if (area === "local" && changes && changes[SETTINGS_KEY]) {
+      applySettings(changes[SETTINGS_KEY].newValue || {});
+    }
+  });
+} catch (_e) {}
 
 if (typeof globalThis.SearchyrollOverlay === "object" && globalThis.SearchyrollOverlay) {
   try {

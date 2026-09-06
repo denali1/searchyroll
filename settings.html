@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Searchyroll Settings</title>
+  <link rel="stylesheet" href="settings.css">
+</head>
+<body>
+  <main class="syr-settings">
+    <header class="syr-header">
+      <h1>Searchyroll Settings</h1>
+      <p class="syr-tagline">Control how Searchyroll behaves in your browser.</p>
+    </header>
+
+    <section class="syr-section">
+      <h2>Search Preferences</h2>
+
+      <div class="syr-control-row">
+        <div class="syr-control-copy">
+          <label class="syr-label" for="syr-adult-toggle">Show adult content in search results</label>
+          <p class="syr-note">Adult content includes titles flagged as mature by AniList.</p>
+          <p class="syr-note">Searchyroll hosts no content — adult titles are metadata only and link to external licensed platforms.</p>
+        </div>
+        <label class="syr-toggle" for="syr-adult-toggle">
+          <input type="checkbox" id="syr-adult-toggle" aria-describedby="syr-adult-note">
+          <span class="syr-toggle-track" aria-hidden="true"></span>
+        </label>
+      </div>
+
+      <div id="syr-adult-gate" class="syr-adult-gate" hidden>
+        <label class="syr-gate-check">
+          <input type="checkbox" id="syr-adult-ack">
+          <span>I confirm I am 18 years of age or older.</span>
+        </label>
+        <div class="syr-gate-actions">
+          <button type="button" id="syr-adult-confirm" class="syr-btn syr-btn-primary" disabled>Confirm and enable</button>
+          <button type="button" id="syr-adult-cancel" class="syr-btn">Cancel</button>
+        </div>
+      </div>
+      <p id="syr-adult-note" class="syr-note syr-muted-note" hidden></p>
+    </section>
+
+    <section class="syr-section">
+      <h2>Keyboard Shortcut</h2>
+      <div class="syr-control-row">
+        <div class="syr-control-copy">
+          <label class="syr-label">Current shortcut</label>
+          <p class="syr-shortcut" id="syr-shortcut">…</p>
+          <p class="syr-note">If your shortcut conflicts with another extension or browser function, change it in your browser's extension shortcut manager.</p>
+        </div>
+        <a class="syr-btn syr-btn-link" id="syr-shortcut-link" href="#" target="_blank" rel="noopener">Change shortcut in browser settings →</a>
+      </div>
+    </section>
+
+    <section class="syr-section">
+      <h2>Catalog Management</h2>
+
+      <div class="syr-control-row">
+        <div class="syr-control-copy">
+          <label class="syr-label">Clear browsing data</label>
+          <p class="syr-note">Removes only live-intercepted records captured from Crunchyroll and Hidive. Catalog records are not affected.</p>
+          <p class="syr-note syr-muted-note" id="syr-last-clear" hidden></p>
+        </div>
+        <button type="button" id="syr-clear-btn" class="syr-btn syr-btn-danger">Clear browsing data</button>
+      </div>
+
+      <div class="syr-control-row">
+        <div class="syr-control-copy">
+          <label class="syr-label">Reset catalog</label>
+          <p class="syr-note">Wipes all stored titles and re-downloads the catalog fresh.</p>
+          <p class="syr-note syr-muted-note" id="syr-last-reset" hidden></p>
+        </div>
+        <button type="button" id="syr-reset-btn" class="syr-btn syr-btn-danger">Reset catalog</button>
+      </div>
+    </section>
+
+    <section class="syr-section">
+      <h2>Developer</h2>
+      <div class="syr-control-row">
+        <div class="syr-control-copy">
+          <label class="syr-label" for="syr-debug-toggle">Enable debug logging (for troubleshooting)</label>
+          <p class="syr-note">Debug logs appear in the browser console and extension inspector.</p>
+        </div>
+        <label class="syr-toggle" for="syr-debug-toggle">
+          <input type="checkbox" id="syr-debug-toggle">
+          <span class="syr-toggle-track" aria-hidden="true"></span>
+        </label>
+      </div>
+    </section>
+
+    <section class="syr-section">
+      <h2>About</h2>
+      <div class="syr-control-row">
+        <div class="syr-control-copy">
+          <label class="syr-label">Searchyroll</label>
+          <p class="syr-note" id="syr-version">Version …</p>
+        </div>
+      </div>
+      <nav class="syr-links">
+        <a href="https://github.com/denali1/searchyroll" target="_blank" rel="noopener">GitHub repo</a>
+        <a href="https://github.com/denali1/searchyroll/blob/main/PRIVACY.md" target="_blank" rel="noopener">Privacy policy</a>
+        <a href="https://github.com/denali1/searchyroll/blob/main/README.md#support-a-good-cause" target="_blank" rel="noopener">Support a Good Cause</a>
+      </nav>
+      <div class="syr-charity-links">
+        <a href="https://imaginationlibrary.com" target="_blank" rel="noopener">Dolly Parton's Imagination Library</a>
+        <a href="https://my.clevelandclinic.org/departments/neurological/depts/lou-ruvo-center-for-brain-health" target="_blank" rel="noopener">Lou Ruvo Center for Brain Health — Cleveland Clinic</a>
+        <a href="https://www.woundedwarriorproject.org" target="_blank" rel="noopener">Wounded Warrior Project</a>
+      </div>
+    </section>
+  </main>
+
+  <div id="syr-dialog-backdrop" class="syr-dialog-backdrop">
+    <div class="syr-dialog" role="dialog" aria-modal="true" aria-labelledby="syr-dialog-title">
+      <h3 id="syr-dialog-title"></h3>
+      <p id="syr-dialog-message"></p>
+      <div class="syr-dialog-actions">
+        <button type="button" id="syr-dialog-cancel" class="syr-btn">Cancel</button>
+        <button type="button" id="syr-dialog-confirm" class="syr-btn syr-btn-danger">Continue</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="syr-toast" class="syr-toast" role="status" aria-live="polite" hidden></div>
+
+  <script src="settings.js"></script>
+</body>
+</html>
