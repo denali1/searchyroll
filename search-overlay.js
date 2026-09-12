@@ -900,6 +900,10 @@
             return;
           }
           genre.innerHTML = "";
+          const allOpt = document.createElement("option");
+          allOpt.value = "";
+          allOpt.textContent = "All genres";
+          genre.appendChild(allOpt);
           for (const g of options) {
             const opt = document.createElement("option");
             opt.value = g;

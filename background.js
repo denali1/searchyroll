@@ -330,7 +330,7 @@ const MAL_CLIENT_ID = "84aed83fe10670ee548239d9ab99c8f8";
     if (filters.studio !== undefined && filters.studio !== null && filters.studio !== record.studio) {
       return false;
     }
-    if (filters.genre !== undefined && filters.genre !== null) {
+    if (filters.genre !== undefined && filters.genre !== null && filters.genre !== "") {
       const genres = Array.isArray(record.anilistGenres) ? record.anilistGenres : [];
       if (genres.indexOf(filters.genre) === -1) {
         return false;
