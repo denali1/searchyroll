@@ -23,7 +23,7 @@
 // and ships in-extension by design. TODO BEFORE VERIFYING/SHIPPING: replace
 // this placeholder with a real MAL API client ID or MAL returns HTTP 400
 // ("Invalid client id"), which is handled gracefully as a silent null score.
-const MAL_CLIENT_ID = "YOUR_MAL_CLIENT_ID";
+const MAL_CLIENT_ID = "84aed83fe10670ee548239d9ab99c8f8";
 
 /* ===========================================================================
  * SearchyrollDB — IndexedDB catalog layer
@@ -356,6 +356,24 @@ const MAL_CLIENT_ID = "YOUR_MAL_CLIENT_ID";
     return all.filter((record) => matchesFilter(record, filters || {}));
   };
 
+  // Sorted unique genre list from all records matching the filter. Used by the
+  // search overlay's genre dropdown, which previously had to pull every title
+  // (up to ~10k catalog records) through runtime messaging just to build a set.
+  const getGenres = async (filters) => {
+    const all = await getAllTitles();
+    const set = new Set();
+    for (const record of all) {
+      if (!matchesFilter(record, filters || {})) {
+        continue;
+      }
+      const genres = Array.isArray(record.anilistGenres) ? record.anilistGenres : [];
+      for (const genre of genres) {
+        set.add(genre);
+      }
+    }
+    return Array.from(set).sort();
+  };
+
   // Deletes only live-intercepted records: platformKey matches
   // ^(crunchyroll|hidive): and the id segment does not start with "c-"
   // (catalog-materialized records are keyed platform:c-<anilistId>).
@@ -438,6 +456,7 @@ const MAL_CLIENT_ID = "YOUR_MAL_CLIENT_ID";
     getTitle,
     mergeMALFields,
     queryTitles,
+    getGenres,
     getAllTitles,
     clearLiveRecords,
     clearAll,
@@ -1237,7 +1256,13 @@ const MAL_CLIENT_ID = "YOUR_MAL_CLIENT_ID";
       await writeStorage({ [STORAGE_VERSION_KEY]: current });
       return false; // already current
     }
-    return await downloadAndImportCatalog(catalogAssetUrlFor(manifest.version));
+    const imported = await downloadAndImportCatalog(catalogAssetUrlFor(manifest.version));
+    if (imported) {
+      try {
+        await broadcastCatalogImported();
+      } catch (_e) {}
+    }
+    return imported;
   };
 
   const bootstrap = () => {
@@ -1247,6 +1272,35 @@ const MAL_CLIENT_ID = "YOUR_MAL_CLIENT_ID";
       });
     }
     return checkPromise;
+  };
+
+  // Tells every open CR/Hidive tab that a catalog import just completed so the
+  // search overlay can rebuild its genre dropdown instead of staying on the
+  // snapshot it took before the async import had landed.
+  const broadcastCatalogImported = async () => {
+    try {
+      const tabs = await browser.tabs.query({ url: ["*://*.crunchyroll.com/*", "*://*.hidive.com/*"] });
+      for (const tab of tabs || []) {
+        if (tab && tab.id !== undefined && tab.id !== null) {
+          try {
+            await browser.tabs.sendMessage(tab.id, { action: "catalogImported" });
+          } catch (_e) {}
+        }
+      }
+    } catch (_e) {}
+  };
+
+  // Defeats the 24h check throttle WITHOUT discarding an already-imported
+  // version: clears the memoized promise and import lock so this call actually
+  // re-runs the version check now, and stamps catalogCheckedAt to 0. Used on
+  // extension update so a freshly published artifact is picked up promptly
+  // even when the previous cached check fell inside the throttle window.
+  // Same-version re-checks are a no-op inside checkCatalogVersion (no download).
+  const recheck = async () => {
+    checkPromise = null;
+    importBusy = false;
+    await writeStorage({ [STORAGE_CHECKED_KEY]: 0 });
+    return bootstrap();
   };
 
   // Forces a full re-check + re-download after a catalog reset: clears the
@@ -1263,6 +1317,7 @@ const MAL_CLIENT_ID = "YOUR_MAL_CLIENT_ID";
 
   globalThis.SearchyrollCatalog = {
     bootstrap,
+    recheck,
     resetBootstrap,
     materializeCatalogRecords,
     catalogAssetUrlFor
@@ -1313,6 +1368,12 @@ browser.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     SearchyrollDB.queryTitles(message.filters || {})
       .then((records) => sendResponse({ ok: true, records: records }))
       .catch(() => sendResponse({ ok: false, error: "query failed" }));
+    return true;
+  }
+  if (action === "getGenres") {
+    SearchyrollDB.getGenres(message.filters || {})
+      .then((genres) => sendResponse({ ok: true, genres: genres }))
+      .catch(() => sendResponse({ ok: false, error: "getGenres failed" }));
     return true;
   }
   if (action === "getAllTitles") {
@@ -1468,6 +1529,15 @@ browser.runtime.onInstalled.addListener((details) => {
   if (details && details.reason === "install") {
     try {
       browser.tabs.create({ url: browser.runtime.getURL("welcome.html") });
+    } catch (_e) {}
+  }
+  // An extension update must not sit inside the previous 24h check throttle:
+  // clearing the checked timestamp (and the memoized check, which the SW-start
+  // bootstrap above may have already run and throttled) lets the version check
+  // re-run now and pick up a newly published catalog artifact immediately.
+  if (details && details.reason === "update") {
+    try {
+      SearchyrollCatalog.recheck().catch(() => {});
     } catch (_e) {}
   }
   // Kick the catalog bootstrap (memoized — no-op if the startup check already ran).

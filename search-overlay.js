@@ -890,28 +890,25 @@
   };
 
   const loadGenres = () => {
-    queryTitles({ adultContent: state.adultContent === true }).then((records) => {
-      const set = new Set();
-      for (const r of records) {
-        if (Array.isArray(r.anilistGenres)) {
-          for (const g of r.anilistGenres) {
-            set.add(g);
+    try {
+      browser.runtime.sendMessage({ action: "getGenres", filters: { adultContent: state.adultContent === true } })
+        .then((res) => {
+          const options = (res && res.ok && Array.isArray(res.genres)) ? res.genres : [];
+          state.genreOptions = options;
+          const genre = state.root && state.root.getElementById("syr-genre");
+          if (!genre) {
+            return;
           }
-        }
-      }
-      const options = [].slice.call(set).sort();
-      state.genreOptions = options;
-      const genre = state.root.getElementById("syr-genre");
-      if (genre) {
-        genre.innerHTML = "";
-        for (const g of options) {
-          const opt = document.createElement("option");
-          opt.value = g;
-          opt.textContent = g;
-          genre.appendChild(opt);
-        }
-      }
-    });
+          genre.innerHTML = "";
+          for (const g of options) {
+            const opt = document.createElement("option");
+            opt.value = g;
+            opt.textContent = g;
+            genre.appendChild(opt);
+          }
+        })
+        .catch(() => {});
+    } catch (_e) {}
   };
 
   const init = (platform) => {
@@ -931,6 +928,14 @@
         if (changes[SETTINGS_KEY]) {
           applySettings(changes[SETTINGS_KEY].newValue || {});
         }
+      });
+    } catch (_e) {}
+    try {
+      browser.runtime.onMessage.addListener((message) => {
+        if (message && message.action === "catalogImported") {
+          loadGenres();
+        }
+        return false;
       });
     } catch (_e) {}
   };
